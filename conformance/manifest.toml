@@ -1,14 +1,14 @@
 # Per-file tier and run options for vendor/lua-tests/. This is the only input to the conformance harness.
 #
-# tier - scoreboard group. Required unless `kip` is present.
+# tier - scoreboard group. Required unless `skip` is present.
 #   v1.0        Runs meaningfully without T. ruta must match the reference for v1.0.
 #   v2.0        Returns early when T == nil. Only becomes meaningful once a reference built with ltests and the C ABI layer exist.
 #   impossible  Cannot be compared differentially even after v2.0 - currently no file.
-# nondeterministic — output differs run to run; compare the exit code only.
+# nondeterministic — output differs run to run; compare the number of lines.
 # skip - excluded from a denominator. Exactly one of `tier` and `skip` must be present.
 # port - run with -e "_port=true".
 # recipe - a non-default way of running the file.
-# note - prose for humand readers.
+# note - prose for human readers.
 #
 # Options (port, recipe) are not set to make a file pass. Differential testing counts a failure as a match
 # when the reference fails the same way, so the only purpose of an option is to make more of the file execute.
