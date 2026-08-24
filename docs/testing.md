@@ -92,10 +92,23 @@ rest of the file still runs; those are `v1.0` with a note recording which region
 checked.
 
 **`impossible` is empty, and that is a real result rather than an oversight.** The tier is
-reserved for files that cannot be compared even once v2.0 is complete. `T` does not qualify:
-it can be provided by compiling `vendor/lua-tests/ltests/` into the reference, so those files
-are deferred, not unreachable. The tier is kept because a file could still land in it, and an
-empty tier is an honest thing to print.
+reserved for files that cannot be compared even once v2.0 is complete. `T` does not qualify —
+but the reason is narrower than "compile `vendor/lua-tests/ltests/` into the reference."
+
+`ltests.h` shows that `T` is two things at once. One is a Lua library (`lua_checkmemory`,
+a deliberately failable allocator, internal object dumps), and it reaches PUC-Lua's internals
+rather than its public C API — `lua_printobj` takes a `GCObject *`. The other is a build
+configuration: assertions on, jump tables off, `LUAI_MAXSTACK` cut to 68000, `LUAI_MAXCCALLS`
+to 180, `LUAL_BUFFERSIZE` to 23, the string table minimum to 2. Every size is shrunk so that
+ordinary programs hit boundaries that a normal build would never reach.
+
+So the three `v2.0` files need the C ABI layer **and a ruta-side equivalent of `T`** — heap
+verification, an allocator that fails on command, internal dumps — **and a build profile with
+the same shrunken constants**. That is reimplementation, not reuse: what `T` exposes is
+PUC-Lua's internals, and ruta does not have PUC-Lua's internals.
+
+Deferred, then, rather than unreachable. The tier is kept because a file could still land in
+it, and an empty tier is an honest thing to print.
 
 Three files are skipped and excluded from the denominator: `heavy.lua`, a stress test
 `all.lua` never invokes which deliberately exhausts memory and runs past the timeout, and

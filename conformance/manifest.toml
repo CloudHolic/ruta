@@ -91,7 +91,8 @@ note = "Returns at line 126 when T == nil. Lines 126-196 are v2.0 territory."
 
 [files."goto.lua"]
 tier = "v1.0"
-note = "Line 328: without T, 'global' is not a reserved word; with T it is. The stage 1 parser has to know about this difference."
+note = """Line 328: `global` is a reserved word only when LUA_COMPAT_GLOBAL is off, which ltests.h sets and a normal build does not.
+The test checks T because T correlates with that build, not because T causes it. The stage 1 lexer needs a `compat_global` flag, always on for v1.0."""
 
 [files."heavy.lua"]
 skip = "A stress test all.lua never invokes. It deliberately exhausts memory and runs past 120 seconds."

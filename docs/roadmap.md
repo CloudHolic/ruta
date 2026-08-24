@@ -41,8 +41,13 @@ looks. `goto.lua` alone exercises:
 
 A parser that does not know this syntax cannot read the suite at all.
 
-`goto.lua:328` depends on `global` being a reserved word only when the `T` library is present
-— the lexer has to reproduce that distinction.
+`goto.lua:328` depends on `global` not being a reserved word. The mechanism is a build
+option, not the test library: `luaconf.h` defines `LUA_COMPAT_GLOBAL`, on by default, which
+keeps `global` usable as an ordinary identifier; `ltests.h` sets it to 0, so a reference built
+with the test headers rejects `global = 1` while a normal one accepts it. The test checks `T`
+because `T` correlates with that build, not because `T` causes it. **The lexer flag ruta needs
+is therefore `compat_global`, not "test mode"** — named after the option it actually mirrors.
+For v1.0 it is always on.
 
 This file is also where the provenance requirement gets concrete:
 
