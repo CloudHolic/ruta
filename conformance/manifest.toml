@@ -1,0 +1,142 @@
+# Per-file tier and run options for vendor/lua-tests/. This is the only input to the conformance harness.
+#
+# tier - scoreboard group. Required unless `kip` is present.
+#   v1.0        Runs meaningfully without T. ruta must match the reference for v1.0.
+#   v2.0        Returns early when T == nil. Only becomes meaningful once a reference built with ltests and the C ABI layer exist.
+#   impossible  Cannot be compared differentially even after v2.0 - currently no file.
+# skip - excluded from a denominator. Exactly one of `tier` and `skip` must be present.
+# port - run with -e "_port=true".
+# recipe - a non-default way of running the file.
+# note - prose for humand readers.
+#
+# Options (port, recipe) are not set to make a file pass. Differential testing counts a failure as a match
+# when the reference fails the same way, so the only purpose of an option is to make more of the file execute.
+# That is why main.lua gets no `port`: it would pass, but nothing in it would run.
+
+[files."all.lua"]
+tier = "v1.0"
+port = true
+note = """Runs the whole suite. Its `dofile` round-trips each file through string.dump and load, and it asserts on return values between files,
+so it verifies more than running the files separately. Without `port` it stops at main.lua and loses 27 files.
+On Windows it reaches files.lua:467."""
+
+[files."api.lua"]
+tier = "v2.0"
+note = "All 1416 lines sit behind an early `return` taken when T == nil. Without T it prints 3 lines."
+
+[files."attrib.lua"]
+tier = "v1.0"
+port = true
+note = "Without `port` it stops at the assertion on line 154. With it, the file runs to the end."
+
+[files."big.lua"]
+tier = "v1.0"
+recipe = "coroutine"
+note = "Must be wrapped in coroutine.wrap the way all.lua does it. Run plainly it fails with 'attempt to yield from outside a coroutine'."
+
+[files."bitwise.lua"]
+tier = "v1.0"
+
+[files."bwcoercion.lua"]
+skip = "Not a test — a module required by bitwise.lua."
+
+[files."calls.lua"]
+tier = "v1.0"
+
+[files."closure.lua"]
+tier = "v1.0"
+
+[files."code.lua"]
+tier = "v2.0"
+note = "All 504 lines sit behind an early `return` taken when T == nil. Without T it prints 3 lines."
+
+[files."constructs.lua"]
+tier = "v1.0"
+
+[files."coroutine.lua"]
+tier = "v1.0"
+note = "Returns at line 1054 when T == nil. Lines 1054-1263 (the coroutine C API) are v2.0 territory."
+
+[files."cstack.lua"]
+tier = "v1.0"
+
+[files."db.lua"]
+tier = "v1.0"
+
+[files."errors.lua"]
+tier = "v1.0"
+note = "The `if not T` block at line 92 (error messages raised inside C functions) is v2.0 territory."
+
+[files."events.lua"]
+tier = "v1.0"
+note = "The `if not T` block at line 328 (userdata metatables) is v2.0 territory."
+
+[files."files.lua"]
+tier = "v1.0"
+port = true
+note = """The 'testing flush' block on lines 466-480 uses /dev/null and /dev/full with no `_port` guard,
+unlike the other Unix-only blocks in this file. On Windows it stops at line 467, and the reference stops there too.
+Without `port` it stops much earlier, at line 88."""
+
+[files."gc.lua"]
+tier = "v1.0"
+note = "The `if T` block at line 400 (userdata GC) is v2.0 territory. Failing with OOM is expected until stage 8."
+
+[files."gengc.lua"]
+tier = "v1.0"
+note = "Returns at line 126 when T == nil. Lines 126-196 are v2.0 territory."
+
+[files."goto.lua"]
+tier = "v1.0"
+note = "Line 328: without T, 'global' is not a reserved word; with T it is. The stage 1 parser has to know about this difference."
+
+[files."heavy.lua"]
+skip = "A stress test all.lua never invokes. It deliberately exhausts memory and runs past 120 seconds."
+
+[files."literals.lua"]
+tier = "v1.0"
+
+[files."locals.lua"]
+tier = "v1.0"
+note = "The rawget(_G, 'T') blocks at lines 114 and 666 are v2.0 territory."
+
+[files."main.lua"]
+tier = "v1.0"
+note = """Assumes a Unix-like shell. On Windows it stops at line 41, and the reference stops there too.
+Setting `port` would make it pass, but it would return at line 6 and execute nothing, so it is deliberately left off."""
+
+[files."math.lua"]
+tier = "v1.0"
+
+[files."memerr.lua"]
+tier = "v2.0"
+note = "All 309 lines sit behind an early `return` taken when T == nil. Without T it prints 3 lines."
+
+[files."nextvar.lua"]
+tier = "v1.0"
+note = "The `if not T` blocks at lines 144 and 664 (internal table sizes) are v2.0 territory."
+
+[files."pm.lua"]
+tier = "v1.0"
+
+[files."sort.lua"]
+tier = "v1.0"
+
+[files."strings.lua"]
+tier = "v1.0"
+note = "The `if T` blocks at lines 469 and 530 (pushfstring, external strings) are v2.0 territory. Setting `port` would cut the output from 14 to 12 lines, so it is left off."
+
+[files."tpack.lua"]
+tier = "v1.0"
+
+[files."tracegc.lua"]
+skip = "Not a test — a module required by all.lua, cstack.lua and locals.lua."
+
+[files."utf8.lua"]
+tier = "v1.0"
+
+[files."vararg.lua"]
+tier = "v1.0"
+
+[files."verybig.lua"]
+tier = "v1.0"

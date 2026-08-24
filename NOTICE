@@ -1,0 +1,12 @@
+ruta bundles the following third-party assets, unmodified.
+
+---
+
+Lua
+  vendor/puc-lua/
+  vendor/lua-tests/
+
+  Copyright (C) 1994-2026 Lua.org, PUC-Rio.
+
+  Distributed under the MIT license. The original copyright notice and the full
+  license text are in vendor/puc-lua/src/lua.h and vendor/puc-lua/doc/readme.html.
