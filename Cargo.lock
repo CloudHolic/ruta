@@ -182,7 +182,9 @@ dependencies = [
 name = "ruta-cli"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "clap",
+ "ruta-conformance",
  "ruta-runtime",
  "ruta-syntax",
 ]

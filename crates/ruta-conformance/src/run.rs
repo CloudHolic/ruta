@@ -29,8 +29,9 @@ pub struct Outcome {
 enum Streams {
     /// stdout, stderr and the exit code.
     All,
-    /// The exit code alone, for files whose output is not reproducible run to run.
-    StatusOnly,
+    /// The exit code and the number of lines on each stream, for files whose output is not
+    /// reproducible run to run.
+    Shape,
 }
 
 /// The result of running both interpreters on the same input.
@@ -103,7 +104,7 @@ impl Harness {
                 Ok(args)
             },
             if case.nondeterministic {
-                Streams::StatusOnly
+                Streams::Shape
             } else {
                 Streams::All
             },
@@ -128,7 +129,11 @@ impl Harness {
                     && reference.stderr == candidate.stderr
                     && reference.code == candidate.code
             }
-            Streams::StatusOnly => reference.code == candidate.code,
+            Streams::Shape => {
+                reference.code == candidate.code
+                    && line_count(&reference.stdout) == line_count(&candidate.stdout)
+                    && line_count(&reference.stderr) == line_count(&candidate.stderr)
+            }
         };
 
         if same {
@@ -227,6 +232,10 @@ fn strip_interpreter_path(bytes: Vec<u8>, program: &Path) -> Vec<u8> {
 
     out.extend_from_slice(rest);
     out
+}
+
+fn line_count(bytes: &[u8]) -> usize {
+    bytes.iter().filter(|byte| **byte == b'\n').count()
 }
 
 /// The way `all.lua` runs `big.lua`.

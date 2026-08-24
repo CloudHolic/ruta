@@ -11,7 +11,15 @@ path = "src/main.rs"
 [dependencies]
 ruta-runtime.workspace = true
 ruta-syntax.workspace = true
+anyhow.workspace = true
 clap.workspace = true
+
+[dev-dependencies]
+ruta-conformance.workspace = true
+
+[[test]]
+name = "conformance"
+harness = false
 
 [lints]
 workspace = true
