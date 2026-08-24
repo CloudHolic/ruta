@@ -25,11 +25,37 @@ an empty implementation. See [testing.md](testing.md).
 Target: every scored file *parses*. This is not the same as passing — nothing executes yet —
 but it is a real gate, because a parse error stops a file before any of it runs.
 
-Two things bite here. First, Lua 5.5's `global` declaration is used by 17 files in the suite,
-in several forms: `global <const> *`, `global none` followed by individual declarations, and
-`global <const> a, b`. A parser that does not know this syntax cannot read the suite at all.
-Second, `goto.lua:328` depends on `global` being a reserved word only when the `T` library is
-present — the lexer has to reproduce that distinction.
+**This stage is scored against `luac -p`, not against the main scoreboard.** See "Stages 1-3
+and the parse scoreboard" below.
+
+Lua 5.5's `global` declaration is used by 17 files in the suite and is wider than it first
+looks. `goto.lua` alone exercises:
+
+- `global <const> *`, `global *`, `global none`
+- initializers: `global<const> a, b, c = 10, 20, 30`, and `global a, b, c, d = table.unpack{...}`
+  with the usual expression-list adjustment
+- `global function foo (x)`, combining with the function statement
+- `global X<close>`, which must be rejected
+- redefinition (`global 'print' already defined`), which is a **runtime** error, not a
+  compile-time one
+
+A parser that does not know this syntax cannot read the suite at all.
+
+`goto.lua:328` depends on `global` being a reserved word only when the `T` library is present
+— the lexer has to reproduce that distinction.
+
+This file is also where the provenance requirement gets concrete:
+
+```lua
+checkerr([[
+  global foo <const>;
+  function foo (x)
+    return
+  end
+]], "%:2%:")   -- correct line in error message
+```
+
+The suite asserts on the *line number* inside a compile error, not just the text.
 
 `literals.lua` and `constructs.lua` are the closest thing to direct tests of this stage.
 Constraint 12 in [INVARIANTS.md](../INVARIANTS.md) binds the AST design and should be read
@@ -39,19 +65,39 @@ before starting.
 Locals, upvalue capture, `goto` and label scoping, and the `global` declarations from stage 1
 resolved against their scopes. Targets: `locals.lua`, `goto.lua`, `closure.lua`.
 
+Also scored against `luac -p`: most of what this stage produces is compile-time errors, and
+their text and line numbers are comparable without running anything.
+
 **3 — Value representation and heap interface.** No collector yet.
 Tables as a hybrid of an array part and a hash part, written by hand. Strings, handles,
 allocation.
 
-No test file moves during this stage, which makes it the easiest one to get wrong quietly.
+**Neither scoreboard moves during this stage — not the conformance one, not the parse one.**
+The only check is Rust unit tests written alongside the code, which makes this the easiest
+stage to get wrong quietly and the one where test discipline has to be deliberate rather
+than inherited from the harness.
+
 [INVARIANTS.md](../INVARIANTS.md) constraints 1-6 all land here and are close to
 irreversible afterward; read them first.
 
 **4 — IR, code generation, VM core.**
-The first stage that moves the scoreboard. Register allocation, the dispatch loop, calls and
-returns on an explicit frame stack. Targets: `calls.lua`, `constructs.lua`, `vararg.lua`,
-`verybig.lua`, `cstack.lua`.
-Constraints 7, 8, 10, and 11 apply.
+The first stage that moves the conformance scoreboard. Register allocation, the dispatch
+loop, calls and returns on an explicit frame stack. Targets: `calls.lua`, `constructs.lua`,
+`vararg.lua`, `verybig.lua`, `cstack.lua`.
+Constraints 7, 8, 10, 11, and 13 apply. `ruta-compile` and `ruta-bytecode` are split out
+here, and constraint 13 has to hold from the commit that creates them.
+
+**A call-depth limit is part of this stage's design, not an afterthought.** Unbounded
+recursion has to surface as a catchable Lua error; without a limit it is an OOM or a crash,
+which is a failed implementation rather than a missing feature. PUC-Lua needs two limits
+because Lua-to-Lua calls live on its own `CallInfo` chain while calls through C functions and
+metamethods really do recurse on the C stack (`LUAI_MAXSTACK` and `LUAI_MAXCCALLS`
+respectively) — `cstack.lua` exists to check the second one degrades into an error instead of
+a segfault. Constraint 8 puts both paths on the same explicit frame stack, so ruta needs one
+limit rather than two. What must match PUC is the error text (`stack overflow`, and the
+`error in error handling` case when the handler overflows too); the depth itself need not,
+unless `cstack.lua` turns out to print one — check against the reference when the file first
+runs.
 
 **4b — Closures and upvalues.**
 Split out because upvalue capture interacts with both the register allocator and the future
@@ -99,6 +145,20 @@ Targets: `api.lua`, `code.lua`, `memerr.lua` — the three files in the `v2.0` t
 See [ADR 0004](decisions/0004-defer-c-abi.md).
 
 **--- v2.0 ---**
+
+## Stages 1-3 and the parse scoreboard
+
+The conformance scoreboard cannot move before stage 4, because it compares program output and
+nothing runs until there is a VM. That leaves three stages — plausibly months — with no
+number, which is the same problem stage 0 existed to solve.
+
+Stages 1 and 2 get their own oracle instead: **`luac -p`**, which parses without executing.
+`cargo xtask build-reference --luac` builds it from the same vendored sources, and `ruta -p`
+is the counterpart on this side. Accepted-versus-rejected and the exact text and line numbers
+of compile errors are all comparable this way, over the same 31 files.
+
+Stage 3 has no equivalent and is covered by Rust unit tests alone. That is a real gap, not an
+oversight; it is recorded here so that the absence is noticed rather than assumed.
 
 ## On the target files
 

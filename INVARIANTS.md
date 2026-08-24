@@ -1,7 +1,7 @@
 # Invariants
 
 Design constraints that cannot be reversed later. Everything else in `ruta` is open to
-revision; these twelve are not.
+revision; these thirteen are not.
 
 A constraint earns a place here when getting it wrong means rewriting a subsystem rather
 than editing it. That is a narrow bar on purpose — this file stays short so that it keeps
@@ -69,4 +69,22 @@ Retrofitting hook checks means touching the hot loop again once its shape has se
 **12. Name and source-position provenance is attached from the AST node onward.** Stage 1.
 Lua error messages name the kind and identity of a variable — `attempt to index a nil value
 (local 'x')` — and the official test suite asserts on those exact strings. Provenance that
-is not carried from the parser cannot be recovered in the VM.
+is not carried from the parser cannot be recovered in the VM. `goto.lua` goes further and
+asserts on the *line number* inside a compile error (`checkerr(..., "%:2%:")`), so positions
+have to survive the IR as well as names.
+
+## Structure
+
+**13. `ruta-compile` does not depend on `ruta-runtime`.** Stage 4.
+The IR is the backend boundary, and a crate boundary is the only way to make that structural
+rather than aspirational — a compiler that cannot name a runtime type cannot accidentally
+reach into one.
+
+The consequence to plan for: **code generation cannot build heap objects**, so it cannot
+intern strings. The constant pool holds unresolved constants — plain `String`, `i64`, `f64` —
+and the runtime interns them when a chunk is loaded. This is what PUC-Lua's undump does, and
+stage 10 needs it again for `string.dump` round-trips.
+
+Both crates are split out of `ruta-syntax` and `ruta-runtime` at stage 4. The boundary has to
+exist from the moment they do; retrofitting it means untangling every site where the
+compiler learned to depend on runtime representation.
