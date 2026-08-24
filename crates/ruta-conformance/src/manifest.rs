@@ -31,6 +31,7 @@ pub struct Case {
     pub name: String,
     pub tier: Tier,
     pub port: bool,
+    pub nondeterministic: bool,
     pub recipe: Option<Recipe>,
     pub note: Option<String>,
 }
@@ -61,6 +62,8 @@ struct RawEntry {
     skip: Option<String>,
     #[serde(default)]
     port: bool,
+    #[serde(default)]
+    nondeterministic: bool,
     recipe: Option<Recipe>,
     note: Option<String>,
 }
@@ -83,6 +86,7 @@ impl Manifest {
                     name,
                     tier,
                     port: entry.port,
+                    nondeterministic: entry.nondeterministic,
                     recipe: entry.recipe,
                     note: entry.note,
                 }),

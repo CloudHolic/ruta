@@ -4,6 +4,7 @@
 #   v1.0        Runs meaningfully without T. ruta must match the reference for v1.0.
 #   v2.0        Returns early when T == nil. Only becomes meaningful once a reference built with ltests and the C ABI layer exist.
 #   impossible  Cannot be compared differentially even after v2.0 - currently no file.
+# nondeterministic — output differs run to run; compare the exit code only.
 # skip - excluded from a denominator. Exactly one of `tier` and `skip` must be present.
 # port - run with -e "_port=true".
 # recipe - a non-default way of running the file.
@@ -15,6 +16,7 @@
 
 [files."all.lua"]
 tier = "v1.0"
+nondeterministic = true
 port = true
 note = """Runs the whole suite. Its `dofile` round-trips each file through string.dump and load, and it asserts on return values between files,
 so it verifies more than running the files separately. Without `port` it stops at main.lua and loses 27 files.
@@ -52,6 +54,7 @@ note = "All 504 lines sit behind an early `return` taken when T == nil. Without 
 
 [files."constructs.lua"]
 tier = "v1.0"
+nondeterministic = true
 
 [files."coroutine.lua"]
 tier = "v1.0"
@@ -102,11 +105,13 @@ note = "The rawget(_G, 'T') blocks at lines 114 and 666 are v2.0 territory."
 
 [files."main.lua"]
 tier = "v1.0"
+nondeterministic = true
 note = """Assumes a Unix-like shell. On Windows it stops at line 41, and the reference stops there too.
 Setting `port` would make it pass, but it would return at line 6 and execute nothing, so it is deliberately left off."""
 
 [files."math.lua"]
 tier = "v1.0"
+nondeterministic = true
 
 [files."memerr.lua"]
 tier = "v2.0"
@@ -114,6 +119,7 @@ note = "All 309 lines sit behind an early `return` taken when T == nil. Without 
 
 [files."nextvar.lua"]
 tier = "v1.0"
+nondeterministic = true
 note = "The `if not T` blocks at lines 144 and 664 (internal table sizes) are v2.0 territory."
 
 [files."pm.lua"]
@@ -121,6 +127,7 @@ tier = "v1.0"
 
 [files."sort.lua"]
 tier = "v1.0"
+nondeterministic = true
 
 [files."strings.lua"]
 tier = "v1.0"
