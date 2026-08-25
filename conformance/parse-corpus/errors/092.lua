@@ -1,0 +1,1 @@
+(collectgarbage or print){}

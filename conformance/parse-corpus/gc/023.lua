@@ -1,0 +1,1 @@
+function temp(a) return 'a23' end

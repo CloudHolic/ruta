@@ -151,7 +151,7 @@ impl Manifest {
             .collect();
         if !ghosts.is_empty() {
             bail!(
-                "listesd in the manifest but absent from {}: {}",
+                "listed in the manifest but absent from {}: {}",
                 suite_dir.display(),
                 ghosts.join(", ")
             );

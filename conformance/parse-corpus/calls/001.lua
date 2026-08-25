@@ -1,0 +1,1 @@
+load 'assert(fat(6)==720)' () 

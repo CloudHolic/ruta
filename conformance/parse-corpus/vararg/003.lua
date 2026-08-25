@@ -1,0 +1,1 @@
+return function (... t) t = 10 end

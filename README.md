@@ -54,11 +54,19 @@ Compiles the vendored PUC-Lua 5.5.1 into `target/reference/lua[.exe]`. This is t
 every test compares against, so it comes first.
 
 ```bash
+cargo xtask build-reference --luac
+```
+
+Builds `luac` from the same sources. It parses without executing, and is the oracle for the
+parse scoreboard that stages 1 through 3 are measured against.
+
+```bash
 cargo test
 ```
 
-Runs the differential test suite and prints the scoreboard above. It exits 0 even when
-everything mismatches — the number is a progress metric, not a pass/fail gate.
+Runs the differential test suite and prints the scoreboard above, followed by the parse
+scoreboard. Both exit 0 even when everything mismatches — the numbers are progress metrics,
+not pass/fail gates.
 
 ```bash
 cargo run --bin ruta -- script.lua
@@ -92,10 +100,10 @@ that each pass can be read and observed on its own —
 | `crates/ruta-cli/` | the `ruta` binary |
 | `crates/ruta-conformance/` | differential test harness |
 | `vendor/` | PUC-Lua sources, the official test suite, the manual — never modified |
-| `conformance/` | test manifest: per-file tiers and run options |
+| `conformance/` | scoring inputs: the test manifest, the `load` prelude, the parse corpus |
 | `docs/` | roadmap, testing guide, decision records |
 
-[INVARIANTS.md](INVARIANTS.md) lists the twelve design constraints that cannot be reversed
+[INVARIANTS.md](INVARIANTS.md) lists the thirteen design constraints that cannot be reversed
 later. They are worth reading before stages 3, 4, and 8 in particular.
 
 ## License

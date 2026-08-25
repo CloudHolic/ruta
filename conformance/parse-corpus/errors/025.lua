@@ -1,0 +1,1 @@
+aaa={13}; local bbbb=1; aaa[bbbb](3)

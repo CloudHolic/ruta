@@ -1,0 +1,1 @@
+aaa=2; BB=nil;x=aaa*BB

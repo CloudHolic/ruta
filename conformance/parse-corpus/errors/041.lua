@@ -1,0 +1,1 @@
+local aaa={bbb={ddd=next}}; aaa.bbb:ddd(nil)

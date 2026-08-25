@@ -1,0 +1,1 @@
+local _ENV = {x={}}; a = a + 1

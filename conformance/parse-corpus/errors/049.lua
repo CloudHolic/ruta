@@ -1,0 +1,1 @@
+aaa=1; local aaa,bbbb=2,3; aaa = math.sin(1) and bbbb(3)

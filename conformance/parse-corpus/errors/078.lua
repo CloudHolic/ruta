@@ -1,0 +1,1 @@
+for i = io.stdin, 10 do end

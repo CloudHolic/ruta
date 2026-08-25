@@ -1,0 +1,1 @@
+local function foo (...t) return t.xx + 1 end; foo()

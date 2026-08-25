@@ -1,0 +1,1 @@
+local a,b,cc; (function () a.x = 1 end)()

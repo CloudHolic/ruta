@@ -1,0 +1,1 @@
+aaa={}; x=(aaa or aaa)+(aaa and aaa)

@@ -1,0 +1,1 @@
+global _ENV, a; a = 10

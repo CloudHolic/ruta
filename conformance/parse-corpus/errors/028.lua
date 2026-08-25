@@ -1,0 +1,1 @@
+a = {_ENV = {}}; print(a._ENV.x + 1)

@@ -1,0 +1,1 @@
+return 'alo \98

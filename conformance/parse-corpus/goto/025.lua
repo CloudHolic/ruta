@@ -1,0 +1,1 @@
+local _ENV = {AA = false}; global AA = 10

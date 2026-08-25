@@ -1,0 +1,1 @@
+local a = setmetatable({}, {__index = 10}).x

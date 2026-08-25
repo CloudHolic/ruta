@@ -1,0 +1,1 @@
+x=string.gsub('alo', '.', string.upper)

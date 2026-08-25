@@ -1,0 +1,1 @@
+ do ::l1:: end goto l1; 

@@ -1,49 +1,18 @@
 //! Running both interpreters on the same input and comparing what comes out.
 
 use std::ffi::OsString;
-use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 
 use crate::manifest::{Case, Recipe};
+use crate::outcome::{Comparison, Outcome, Streams};
+use crate::sandbox::{self, Sandbox, copy_dir};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
-const POLL_INTERVAL: Duration = Duration::from_millis(20);
 const SCRIPT_NAME: &str = "script.lua";
 const DRIVER_NAME: &str = "_driver.lua";
-const INTERPRETER_TOKEN: &[u8] = b"<interpreter>";
-
-/// What one interpreter produced.
-#[derive(Debug)]
-pub struct Outcome {
-    pub stdout: Vec<u8>,
-    pub stderr: Vec<u8>,
-    pub code: Option<i32>,
-}
-
-/// Which streams a case is compared on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Streams {
-    /// stdout, stderr and the exit code.
-    All,
-    /// The exit code and the number of lines on each stream, for files whose output is not
-    /// reproducible run to run.
-    Shape,
-}
-
-/// The result of running both interpreters on the same input.
-#[derive(Debug)]
-pub enum Comparison {
-    Match,
-    Mismatch {
-        reference: Outcome,
-        candidate: Outcome,
-    },
-    Timeout,
-}
 
 /// A pair of interpreters and the directory their sandboxes live in.
 #[derive(Debug)]
@@ -78,6 +47,20 @@ impl Harness {
                 Ok(vec![OsString::from(SCRIPT_NAME)])
             },
             Streams::All,
+            Sandbox::Fresh,
+        )
+    }
+
+    /// Compare the two interpreters parsing one file, without running it.
+    pub fn parse_file(&self, source: &Path) -> Result<Comparison> {
+        self.compare(
+            &mut |dir| {
+                std::fs::copy(source, dir.join(SCRIPT_NAME))
+                    .with_context(|| format!("cannot copy {}", source.display()))?;
+                Ok(vec![OsString::from("-p"), OsString::from(SCRIPT_NAME)])
+            },
+            Streams::All,
+            Sandbox::Reused,
         )
     }
 
@@ -108,33 +91,37 @@ impl Harness {
             } else {
                 Streams::All
             },
+            Sandbox::Fresh,
         )
+    }
+
+    fn run_side(
+        &self,
+        program: &Path,
+        side: &str,
+        prepare: &mut dyn FnMut(&Path) -> Result<Vec<OsString>>,
+        mode: Sandbox,
+    ) -> Result<Option<Outcome>> {
+        let dir = sandbox::sandbox(&self.workdir, side, mode)?;
+        let args = prepare(&dir)?;
+
+        sandbox::run(program, &dir, &args, self.timeout)
     }
 
     fn compare(
         &self,
         prepare: &mut dyn FnMut(&Path) -> Result<Vec<OsString>>,
         streams: Streams,
+        sandbox: Sandbox,
     ) -> Result<Comparison> {
-        let reference = self.run_side(&self.reference, "reference", prepare)?;
-        let candidate = self.run_side(&self.candidate, "candidate", prepare)?;
+        let reference = self.run_side(&self.reference, "reference", prepare, sandbox)?;
+        let candidate = self.run_side(&self.candidate, "candidate", prepare, sandbox)?;
 
         let (Some(reference), Some(candidate)) = (reference, candidate) else {
             return Ok(Comparison::Timeout);
         };
 
-        let same = match streams {
-            Streams::All => {
-                reference.stdout == candidate.stdout
-                    && reference.stderr == candidate.stderr
-                    && reference.code == candidate.code
-            }
-            Streams::Shape => {
-                reference.code == candidate.code
-                    && line_count(&reference.stdout) == line_count(&candidate.stdout)
-                    && line_count(&reference.stderr) == line_count(&candidate.stderr)
-            }
-        };
+        let same = reference.agrees_with(&candidate, streams);
 
         if same {
             Ok(Comparison::Match)
@@ -145,97 +132,6 @@ impl Harness {
             })
         }
     }
-
-    /// `None` means the process was killed for excedding the timeout.
-    fn run_side(
-        &self,
-        program: &Path,
-        side: &str,
-        prepare: &mut dyn FnMut(&Path) -> Result<Vec<OsString>>,
-    ) -> Result<Option<Outcome>> {
-        let dir = self.fresh_sandbox(side)?;
-        let args = prepare(&dir)?;
-
-        let stdout_path = dir.join(".stdout");
-        let stderr_path = dir.join(".stderr");
-
-        // Output goes to files rather than pipes: reading a pipe blocks when the child hangs,
-        // which would deadlock against the timeout below.
-        let mut child = Command::new(program)
-            .args(&args)
-            .current_dir(&dir)
-            .stdin(Stdio::null())
-            .stdout(File::create(&stdout_path)?)
-            .stderr(File::create(&stderr_path)?)
-            .spawn()
-            .with_context(|| format!("cannot run {}", program.display()))?;
-
-        let deadline = Instant::now() + self.timeout;
-        let status = loop {
-            if let Some(status) = child.try_wait()? {
-                break Some(status);
-            }
-
-            if Instant::now() >= deadline {
-                let _ = child.kill();
-                let _ = child.wait();
-                break None;
-            }
-
-            std::thread::sleep(POLL_INTERVAL);
-        };
-
-        let Some(status) = status else {
-            return Ok(None);
-        };
-
-        Ok(Some(Outcome {
-            stdout: strip_interpreter_path(std::fs::read(&stdout_path)?, program),
-            stderr: strip_interpreter_path(std::fs::read(&stderr_path)?, program),
-            code: status.code(),
-        }))
-    }
-
-    /// Each side gets its own directory, wiped before every run. The suite writes into its working directory,
-    /// so a shared or reused one would let an earlier run change a later result.
-    fn fresh_sandbox(&self, side: &str) -> Result<PathBuf> {
-        let dir = self.workdir.join(side);
-        if dir.exists() {
-            std::fs::remove_dir_all(&dir)
-                .with_context(|| format!("cannot clear {}", dir.display()))?;
-        }
-
-        std::fs::create_dir_all(&dir)
-            .with_context(|| format!("cannot create {}", dir.display()))?;
-
-        Ok(dir)
-    }
-}
-
-/// Lua's standalone interpreter prefixes its error messages with `argv[0]`, which is where
-/// each binary happens to live. So replace with a fixed token on both sides.
-fn strip_interpreter_path(bytes: Vec<u8>, program: &Path) -> Vec<u8> {
-    let needle = program.to_string_lossy();
-    let needle = needle.as_bytes();
-    if needle.is_empty() || !bytes.windows(needle.len()).any(|w| w == needle) {
-        return bytes;
-    }
-
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut rest = bytes.as_slice();
-
-    while let Some(at) = rest.windows(needle.len()).position(|w| w == needle) {
-        out.extend_from_slice(&rest[..at]);
-        out.extend_from_slice(INTERPRETER_TOKEN);
-        rest = &rest[at + needle.len()..];
-    }
-
-    out.extend_from_slice(rest);
-    out
-}
-
-fn line_count(bytes: &[u8]) -> usize {
-    bytes.iter().filter(|byte| **byte == b'\n').count()
 }
 
 /// The way `all.lua` runs `big.lua`.
@@ -245,25 +141,4 @@ fn coroutine_driver(name: &str) -> String {
             assert(f() == 'b')\n\
             assert(f() == 'a')\n"
     )
-}
-
-fn copy_dir(from: &Path, to: &Path) -> Result<()> {
-    std::fs::create_dir_all(to).with_context(|| format!("cannot create {}", to.display()))?;
-
-    for entry in
-        std::fs::read_dir(from).with_context(|| format!("cannot read {}", from.display()))?
-    {
-        let entry = entry?;
-        let source = entry.path();
-        let target = to.join(entry.file_name());
-
-        if entry.file_type()?.is_dir() {
-            copy_dir(&source, &target)?;
-        } else {
-            std::fs::copy(&source, &target)
-                .with_context(|| format!("cannot copy {}", source.display()))?;
-        }
-    }
-
-    Ok(())
 }

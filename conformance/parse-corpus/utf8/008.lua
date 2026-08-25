@@ -1,0 +1,1 @@
+return '\u{10000}\u{1fffff}'

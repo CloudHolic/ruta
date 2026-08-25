@@ -1,0 +1,1 @@
+aaa={}; do local aaa=1 end aaa:bbbb(3)

@@ -1,0 +1,1 @@
+for v, k in pairs{} do v = 10 end

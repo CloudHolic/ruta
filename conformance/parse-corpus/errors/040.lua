@@ -1,0 +1,1 @@
+local a,b,c; (function () a = b+1.1 end)()

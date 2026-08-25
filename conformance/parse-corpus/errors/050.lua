@@ -1,0 +1,1 @@
+aaa=1; local aaa,bbbb=2,3; aaa = bbbb(1) or aaa(3)

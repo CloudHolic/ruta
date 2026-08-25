@@ -1,0 +1,1 @@
+aaa=1; bbbb=2; aaa=math.sin(3)+bbbb(3)

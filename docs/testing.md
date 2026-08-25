@@ -53,17 +53,17 @@ exit code — that counts. `files.lua` and `main.lua` both fail on Windows for r
 have nothing to do with `ruta`, and both are still meaningful differential cases.
 
 That distinction is what makes the metric usable this early. The alternative would require
-knowing what each file *should* print, which is exactly the knowledge the project does not
+knowing what each file _should_ print, which is exactly the knowledge the project does not
 have yet.
 
 ### Checking that the harness itself is sound
 
 Two numbers, always read together:
 
-| Configuration | Expected |
-|---|---|
-| reference vs. reference | 31/31 |
-| reference vs. empty `ruta` | 0/31 |
+| Configuration              | Expected |
+| -------------------------- | -------- |
+| reference vs. reference    | 31/31    |
+| reference vs. empty `ruta` | 0/31     |
 
 The first alone is not enough. An early version of the comparison logic scored 31/31 against
 itself and **4/31 against a `ruta` whose `main` did nothing**, because comparing only exit
@@ -74,15 +74,72 @@ Once `ruta` starts producing output the first row can no longer be observed dire
 changing comparison logic, put the reference on both sides and confirm 31/31 before trusting
 any other number.
 
+## The parse scoreboard
+
+The conformance scoreboard cannot move before there is a VM, which leaves stages 1 through 3
+without a number. Those stages get a second oracle: `luac -p`, which parses without executing.
+
+```bash
+cargo xtask build-reference --luac
+cargo test --test parse
+```
+
+```
+ruta parse - Lua 5.5.1
+
+  files        0/34
+  corpus       0/599
+
+  total        0/633
+```
+
+**files** is every `.lua` in the suite — all 34, not the conformance board's 31. The three
+files that board skips are skipped for runtime reasons: `heavy.lua` exhausts memory on
+purpose, and `tracegc.lua` and `bwcoercion.lua` are modules other tests require rather than
+tests themselves. `-p` never runs anything, so none of those reasons survive into parsing.
+
+**corpus** is `conformance/parse-corpus/`: the strings the suite passes to `load`. These are
+the Lua team's own curated compile-error cases — `checkerr("global X<close>", "cannot be")`
+and several hundred more — and they normally only execute when a file runs, which is stage 4.
+`cargo xtask extract-parse-corpus` brings them forward, running the suite under a prelude that
+intercepts `load` and dumps every string chunk. Rerunning it reproduces the same files byte
+for byte.
+
+Extraction is selection, not collection. Taken as it comes, the suite yields over 100000
+distinct chunks and 33 MB, almost all of it `constructs.lua` permuting the same few shapes.
+Three limits cut it to 599:
+
+| Limit           | Value   | Why                                                                                                        |
+| --------------- | ------- | ---------------------------------------------------------------------------------------------------------- |
+| chunk size      | 4 KB    | Larger ones are generated stress sources, and each tests a code-generation limit that stage 1 cannot reach |
+| per source file | 100     | Process startup is 32 ms per side, so corpus size _is_ the scoreboard's running time                       |
+| bytecode        | dropped | `all.lua` round-trips every file through `string.dump`; undumping is stage 10                              |
+
+Chunks are deduplicated by content across the whole corpus, and `all.lua` is not extracted
+from at all — it re-runs the whole suite, so everything it captures belongs to another file
+and would be filed under a name that says nothing about where it came from.
+
+The soundness pair is the conformance board's, with the same discipline: `luac -p` against
+itself scores 34/34 and 599/599, and against a `ruta -p` that does nothing but fail it scores 0. **The stub has to fail loudly for the second number to mean anything** — one that exited 0
+silently would match the reference on every file that parses, which is most of them.
+
+The run takes about 70 seconds, nearly all of it process startup: two processes per case at
+32 ms each. Parse-only runs reuse their sandbox instead of wiping it, since nothing is written
+but the script itself; that is worth about 10 ms per case, and nothing else is left to trim
+short of running cases in parallel.
+
+What this scoreboard cannot check is listed in
+[errors.md](errors.md#what-ruta-cannot-reproduce-in-stage-1).
+
 ## Tiers
 
-Set per file in `conformance/manifest.toml`, which is the harness's only input.
+Set per file in `conformance/manifest.toml`, which is the conformance harness's only input.
 
-| Tier | Meaning | Count |
-|---|---|---|
-| `v1.0` | Runs meaningfully without the `T` library | 28 |
-| `v2.0` | Returns early when `T == nil`; needs the C ABI layer to mean anything | 3 |
-| `impossible` | Cannot be compared differentially even after v2.0 | 0 |
+| Tier         | Meaning                                                               | Count |
+| ------------ | --------------------------------------------------------------------- | ----- |
+| `v1.0`       | Runs meaningfully without the `T` library                             | 28    |
+| `v2.0`       | Returns early when `T == nil`; needs the C ABI layer to mean anything | 3     |
+| `impossible` | Cannot be compared differentially even after v2.0                     | 0     |
 
 The classification test is mechanical: **does the file take an early `return` when `T` is
 nil?** `api.lua`, `code.lua`, and `memerr.lua` do — all 1416, 504, and 309 lines
@@ -140,14 +197,14 @@ is still caught.
 Six files produce different output on every run. They are marked `nondeterministic = true`
 in the manifest and compared by exit code **and the line count of each stream**.
 
-| File | Cause |
-|---|---|
-| `all.lua` | prints the result of `math.randomseed()` |
-| `constructs.lua` | `math.random` selects which branch is tested |
-| `main.lua` | prints an `os.tmpname()` path |
-| `math.lua` | prints the result of `math.randomseed()` |
-| `nextvar.lua` | prints a random table seed |
-| `sort.lua` | random data changes timings and comparison counts |
+| File             | Cause                                             |
+| ---------------- | ------------------------------------------------- |
+| `all.lua`        | prints the result of `math.randomseed()`          |
+| `constructs.lua` | `math.random` selects which branch is tested      |
+| `main.lua`       | prints an `os.tmpname()` path                     |
+| `math.lua`       | prints the result of `math.randomseed()`          |
+| `nextvar.lua`    | prints a random table seed                        |
+| `sort.lua`       | random data changes timings and comparison counts |
 
 `sort.lua` is why stripping the printed seed is not enough: the random data itself differs, so
 the computation diverges rather than just the reporting.
@@ -178,11 +235,11 @@ interpreter directly.
 
 On Windows:
 
-| Condition | Result |
-|---|---|
-| as-is | stops at `main.lua:41`, `attempt to index a nil value (local 'f')` |
-| `_port=true` | passes 28 files, stops at `files.lua:467` on `/dev/null` |
-| `_port=true`, flush block removed | `final OK !!!`, exit 0, 6.66 s |
+| Condition                         | Result                                                             |
+| --------------------------------- | ------------------------------------------------------------------ |
+| as-is                             | stops at `main.lua:41`, `attempt to index a nil value (local 'f')` |
+| `_port=true`                      | passes 28 files, stops at `files.lua:467` on `/dev/null`           |
+| `_port=true`, flush block removed | `final OK !!!`, exit 0, 6.66 s                                     |
 
 The "testing flush" block at `files.lua:466-480` uses `/dev/null` and `/dev/full` with **no
 `_port` guard**, unlike the other Unix-only blocks in the same file (lines 718, 769, 858,
@@ -236,12 +293,12 @@ The scoreboard is identical on both platforms, as it must be — it is `0/31` wi
 Under the reference interpreter the two platforms diverge sharply, which is worth knowing
 before reading a `files.lua` or `main.lua` result:
 
-| File | Windows | Linux (WSL2, Arch) |
-|---|---|---|
-| `all.lua` (`_port`) | stops at `files.lua:467` | **`final OK !!!`, exit 0**, 387/2 lines |
-| `files.lua` (`_port`) | stops at line 467, `/dev/null` | **exit 0**, 12 lines |
-| `main.lua` | stops at line 41 | stops at line 207, `assertion failed!` |
-| `attrib.lua` (`_port`) | exit 0 | exit 0, 7 lines |
+| File                   | Windows                        | Linux (WSL2, Arch)                      |
+| ---------------------- | ------------------------------ | --------------------------------------- |
+| `all.lua` (`_port`)    | stops at `files.lua:467`       | **`final OK !!!`, exit 0**, 387/2 lines |
+| `files.lua` (`_port`)  | stops at line 467, `/dev/null` | **exit 0**, 12 lines                    |
+| `main.lua`             | stops at line 41               | stops at line 207, `assertion failed!`  |
+| `attrib.lua` (`_port`) | exit 0                         | exit 0, 7 lines                         |
 
 **The full suite passes on Linux.** `/dev/null` exists, so the unguarded flush block in
 `files.lua` is not a problem there.
@@ -259,12 +316,15 @@ just with a different amount of the file being compared.
 
 ## Where the code lives
 
-| Path | Role |
-|---|---|
-| `crates/ruta-conformance/src/manifest.rs` | manifest schema, loading, validation |
-| `crates/ruta-conformance/src/run.rs` | sandboxing, process execution, timeouts, comparison |
-| `crates/ruta-conformance/src/lib.rs` | re-exports plus `differential` |
-| `crates/ruta-cli/tests/conformance.rs` | the `cargo test` entry point and scoreboard |
+| Path                                      | Role                                               |
+| ----------------------------------------- | -------------------------------------------------- |
+| `crates/ruta-conformance/src/manifest.rs` | manifest schema, loading, validation               |
+| `crates/ruta-conformance/src/outcome.rs`  | what a run produced, and when two runs agree       |
+| `crates/ruta-conformance/src/sandbox.rs`  | throwaway directories, process execution, timeouts |
+| `crates/ruta-conformance/src/run.rs`      | the harness: what to feed both sides               |
+| `crates/ruta-cli/tests/conformance.rs`    | the conformance scoreboard                         |
+| `crates/ruta-cli/tests/parse.rs`          | the parse scoreboard                               |
+| `crates/ruta-cli/tests/common/mod.rs`     | the little both scoreboards share                  |
 
 The integration test lives in `ruta-cli` rather than in `ruta-conformance` because
 **`cargo test` does not build another package's binary.** With the test in
@@ -280,8 +340,13 @@ excluded from the denominator.
 `differential` takes a script as a **string**, not a path:
 
 ```rust
-pub fn differential(script: &str) -> Result<Comparison>
+pub fn differential(&self, script: &str) -> Result<Comparison>
 ```
 
 Stage 5 adds differential fuzzing over generated arithmetic expressions, which needs to feed
 in generated source directly. A path-based signature would not be reusable there.
+
+The parse scoreboard uses a second entry point, `parse_file`, which takes a path instead.
+Two reasons: `strings.lua` is not valid UTF-8, so it cannot become a `&str` at all, and
+copying the bytes into both sandboxes under one name gives both sides the same chunk name —
+without which every error case would differ on its path alone.

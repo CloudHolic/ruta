@@ -1,0 +1,1 @@
+ goto l2; global *; ::l1:: ::l2:: print(3) 

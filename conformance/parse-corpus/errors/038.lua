@@ -1,0 +1,1 @@
+local aaa={bbb=1}; aaa.bbb:ddd(9)

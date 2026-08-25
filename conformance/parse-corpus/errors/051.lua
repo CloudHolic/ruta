@@ -1,0 +1,1 @@
+local a,b,c,f = 1,1,1; f((a and b) or c)

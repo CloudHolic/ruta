@@ -21,5 +21,9 @@ ruta-conformance.workspace = true
 name = "conformance"
 harness = false
 
+[[test]]
+name = "parse"
+harness = false
+
 [lints]
 workspace = true

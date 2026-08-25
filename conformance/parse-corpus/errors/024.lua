@@ -1,0 +1,1 @@
+local a={}; a.bbbb(3)

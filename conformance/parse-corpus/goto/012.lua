@@ -1,0 +1,1 @@
+global none; X = 1

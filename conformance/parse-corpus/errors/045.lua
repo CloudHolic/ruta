@@ -1,0 +1,1 @@
+BB=1; local aaa={}; x=aaa+BB

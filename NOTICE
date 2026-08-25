@@ -1,4 +1,4 @@
-ruta bundles the following third-party assets, unmodified.
+ruta bundles the following third-party assets.
 
 ---
 
@@ -8,5 +8,18 @@ Lua
 
   Copyright (C) 1994-2026 Lua.org, PUC-Rio.
 
-  Distributed under the MIT license. The original copyright notice and the full
-  license text are in vendor/puc-lua/src/lua.h and vendor/puc-lua/doc/readme.html.
+  Bundled unmodified. Distributed under the MIT license. The original copyright notice
+  and the full license text are in vendor/puc-lua/src/lua.h and
+  vendor/puc-lua/doc/readme.html.
+
+---
+
+Lua test suite excerpts
+  conformance/parse-corpus/
+
+  Copyright (C) 1994-2026 Lua.org, PUC-Rio.
+
+  Source fragments taken verbatim from vendor/lua-tests/: the strings those files pass to
+  `load`, extracted so that the parser can be scored against them before there is anything
+  to run them with. Same MIT license as the suite they come from. How they are produced is
+  described in conformance/README.md.

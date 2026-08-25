@@ -1,0 +1,1 @@
+return '\u{0}\u{7f}\u{80}\u{7ff}\u{800}\u{ffff}\u{10000}\u{10ffff}'
