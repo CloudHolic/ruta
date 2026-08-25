@@ -3,7 +3,9 @@
 use std::io::Write;
 use std::process::ExitCode;
 
-use ruta_syntax::lexer::{LexError, Lexer, LineIndex};
+use ruta_syntax::lexer::Lexer;
+use ruta_syntax::lexer::error::LexError;
+use ruta_syntax::line_index::LineIndex;
 use ruta_syntax::token::TokenKind;
 
 #[cfg(windows)]

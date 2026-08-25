@@ -88,9 +88,9 @@ cargo test --test parse
 ruta parse - Lua 5.5.1
 
   files        0/34
-  corpus       0/599
+  corpus       34/603
 
-  total        0/633
+  total        34/637
 ```
 
 **files** is every `.lua` in the suite — all 34, not the conformance board's 31. The three
@@ -119,9 +119,21 @@ Chunks are deduplicated by content across the whole corpus, and `all.lua` is not
 from at all — it re-runs the whole suite, so everything it captures belongs to another file
 and would be filed under a name that says nothing about where it came from.
 
+The **corpus** count spans a second directory, `conformance/parse-cases/`, which holds four
+files written by hand. Selection is what makes them necessary: the per-file limit keeps 30 of
+`literals.lua`'s 42 lexical errors, and four messages survive only in the twelve it drops. The
+two directories are separate because extraction empties the first one before rewriting it, so
+nothing hand-written can live there. Both are scored on the same axis, and neither records an
+expected output — `luac -p` decides every case as it runs.
+
 The soundness pair is the conformance board's, with the same discipline: `luac -p` against
-itself scores 34/34 and 599/599, and against a `ruta -p` that does nothing but fail it scores 0. **The stub has to fail loudly for the second number to mean anything** — one that exited 0
+itself scores 34/34 and 603/603, and against a `ruta -p` that does nothing but fail it scores 0. **The stub has to fail loudly for the second number to mean anything** — one that exited 0
 silently would match the reference on every file that parses, which is most of them.
+
+Byte-for-byte means the line ending too. On Windows the reference writes CRLF, because its
+streams go through the C runtime in text mode, and `ruta` matches it — see
+[decisions/0006](decisions/0006-windows-line-endings.md). Until it did, the board sat at 0 with
+every message otherwise correct.
 
 The run takes about 70 seconds, nearly all of it process startup: two processes per case at
 32 ms each. Parse-only runs reuse their sandbox instead of wiping it, since nothing is written
