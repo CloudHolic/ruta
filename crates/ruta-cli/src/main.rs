@@ -6,6 +6,11 @@ use std::process::ExitCode;
 use ruta_syntax::lexer::{LexError, Lexer, LineIndex};
 use ruta_syntax::token::TokenKind;
 
+#[cfg(windows)]
+const LINE_END: &[u8] = b"\r\n";
+#[cfg(not(windows))]
+const LINE_END: &[u8] = b"\n";
+
 fn main() -> ExitCode {
     let mut args = std::env::args();
     let progname = args.next().unwrap_or_else(|| "ruta".to_owned());
@@ -13,18 +18,18 @@ fn main() -> ExitCode {
     match (args.next().as_deref(), args.next(), args.next()) {
         (Some("-p"), Some(path), None) => parse_only(&progname, &path),
         _ => {
-            eprintln!("{progname}: usage: ruta -p <file>");
+            report(format!("{progname}: usage: ruta -p <file>").as_bytes());
             ExitCode::FAILURE
         }
     }
 }
 
-///Parse without executing, the way `luac -p` does.
+/// Parse without executing, the way `luac -p` does.
 fn parse_only(progname: &str, path: &str) -> ExitCode {
     let source = match std::fs::read(path) {
         Ok(bytes) => strip_prelude(&bytes),
         Err(error) => {
-            eprintln!("{progname}: cannot open {path}: {error}");
+            report(format!("{progname}: cannot open {path}: {error}").as_bytes());
             return ExitCode::FAILURE;
         }
     };
@@ -44,38 +49,46 @@ fn parse_only(progname: &str, path: &str) -> ExitCode {
         }
     }
 
-    eprintln!("{progname}: {path}: parsing is not implemented");
+    report(format!("{progname}: {path}: parsing is not implemented").as_bytes());
     ExitCode::FAILURE
 }
 
-fn report_lex_error(progname: &str, path: &str, error: &LexError, source: &[u8]) {
-    let lines = LineIndex::new(source);
-    let mut out = format!("{progname}: {path}:{}: ", error.line(&lines)).into_bytes();
-    out.extend_from_slice(&error.message(source));
-    out.push(b'\n');
+/// Lua's own library writes through the C runtime, which on Windows turns `\n` into `\r\n`.
+fn report(line: &[u8]) {
+    let mut out = Vec::with_capacity(line.len() + LINE_END.len());
+    out.extend_from_slice(line);
+    out.extend_from_slice(LINE_END);
 
     // Nothing left to report to if stderr itself cannot be written.
     let _ = std::io::stderr().write_all(&out);
 }
 
+fn report_lex_error(progname: &str, path: &str, error: &LexError, source: &[u8]) {
+    let lines = LineIndex::new(source);
+    let mut line = format!("{progname}: {path}:{}: ", error.line(&lines)).into_bytes();
+    line.extend_from_slice(&error.message(&lines));
+
+    report(&line);
+}
+
 fn strip_prelude(source: &[u8]) -> Vec<u8> {
-	let body = if source.starts_with(&[0xEF, 0xBB, 0xBF]) {
-		&source[3..]
-	} else {
-		source
-	};
+    let body = if source.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        &source[3..]
+    } else {
+        source
+    };
 
-	if body.first() != Some(&b'#') {
-		return body.to_vec();
-	}
+    if body.first() != Some(&b'#') {
+        return body.to_vec();
+    }
 
-	let rest = match body.iter().position(|byte| *byte == b'\n') {
-		Some(at) => &body[at + 1..],
-		None => a[][..],
-	};
+    let rest = match body.iter().position(|byte| *byte == b'\n') {
+        Some(at) => &body[at + 1..],
+        None => &[][..],
+    };
 
-	let mut out = Vec::with_capacity(rest.len() + 1);
-	out.push(b'\n');
-	out.extend_from_slice(rest);
-	out
+    let mut out = Vec::with_capacity(rest.len() + 1);
+    out.push(b'\n');
+    out.extend_from_slice(rest);
+    out
 }

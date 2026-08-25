@@ -19,8 +19,6 @@ pub struct Token<'a> {
     pub span: Span,
 }
 
-/// Spelled as in `luaX_tokens` (llex.c:45).
-///
 /// `global` is deliberately absent. `LUA_COMPAT_GLOBAL` is on, which makes it an ordinary name,
 /// and the parser separates the two readings with one token of lookahead.
 #[derive(Debug, Clone, PartialEq)]
@@ -70,7 +68,7 @@ pub enum TokenKind<'a> {
 }
 
 impl TokenKind<'_> {
-    /// How a token is named inside an error message - `luaX_token2str` (llex.c: 87).
+    /// How a token is named inside an error message.
     pub fn describe(&self) -> String {
         match self {
             TokenKind::Byte(byte) => {
