@@ -67,8 +67,11 @@ fn report() -> Result<()> {
         println!("  {status:<6}{name}");
     }
 
-    let corpus_dir = root.join("conformance").join("parse-corpus");
-    let corpus = collect_corpus(&corpus_dir)?;
+    let conformance = root.join("conformance");
+    let mut corpus = collect_corpus(&conformance.join("parse-corpus"))?;
+    corpus.extend(collect_corpus(&conformance.join("parse-cases"))?);
+    corpus.sort();
+
     let mut corpus_matched = 0;
 
     for path in &corpus {
