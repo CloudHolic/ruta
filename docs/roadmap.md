@@ -45,9 +45,12 @@ A parser that does not know this syntax cannot read the suite at all.
 option, not the test library: `luaconf.h` defines `LUA_COMPAT_GLOBAL`, on by default, which
 keeps `global` usable as an ordinary identifier; `ltests.h` sets it to 0, so a reference built
 with the test headers rejects `global = 1` while a normal one accepts it. The test checks `T`
-because `T` correlates with that build, not because `T` causes it. **The lexer flag ruta needs
-is therefore `compat_global`, not "test mode"** — named after the option it actually mirrors.
-For v1.0 it is always on.
+because `T` correlates with that build, not because `T` causes it. **The flag ruta needs is
+therefore `compat_global`, not "test mode"** — named after the option it actually mirrors.
+
+It is always on for v1.0, and "on" only means that `global` is an ordinary name, so the lexer
+carries no flag: it returns `global` as a name and the parser separates the two readings with
+one token of lookahead. The flag is built at v2.0, where turning it off first has a consumer.
 
 This file is also where the provenance requirement gets concrete:
 
