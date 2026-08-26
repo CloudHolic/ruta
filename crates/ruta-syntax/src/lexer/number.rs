@@ -1,13 +1,13 @@
 //! Numerals: what a scan takes in, and what the bytes turn out to be worth.
 
+use crate::error::{Near, SyntaxError, SyntaxErrorKind};
 use crate::token::{Token, TokenKind};
 
 use super::Lexer;
 use super::bytes::{hex_value, is_name_start};
-use super::error::{LexError, LexErrorKind, Near};
 
 impl<'a> Lexer<'a> {
-    pub(super) fn read_numeral(&mut self, start: usize) -> Result<Token<'a>, LexError> {
+    pub(super) fn read_numeral(&mut self, start: usize) -> Result<Token<'a>, SyntaxError> {
         let hexadecimal =
             self.peek() == Some(b'0') && matches!(self.source.get(self.pos + 1), Some(b'x' | b'X'));
 
@@ -38,8 +38,8 @@ impl<'a> Lexer<'a> {
         let text = &self.source[start..self.pos];
         match numeral_value(text) {
             Some(kind) => Ok(self.token(kind, start)),
-            None => Err(LexError {
-                kind: LexErrorKind::MalformedNumber,
+            None => Err(SyntaxError {
+                kind: SyntaxErrorKind::MalformedNumber,
                 at: start as u32,
                 near: Near::Buffer(text.to_vec()),
             }),

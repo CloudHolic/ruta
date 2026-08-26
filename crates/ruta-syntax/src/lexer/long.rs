@@ -1,9 +1,9 @@
 //! Long brackets: `[[...]]` strings and `--[[...]]` comments.
 
+use crate::error::{SyntaxError, SyntaxErrorKind};
 use crate::token::{Token, TokenKind};
 
 use super::Lexer;
-use super::error::{LexError, LexErrorKind};
 
 /// Which long-bracket form is being read.
 #[derive(Debug, Clone, Copy)]
@@ -18,7 +18,7 @@ impl<'a> Lexer<'a> {
         &mut self,
         level: usize,
         start: usize,
-    ) -> Result<Token<'a>, LexError> {
+    ) -> Result<Token<'a>, SyntaxError> {
         self.read_long_bracket(level, start, LongForm::String)?;
         let value: Box<[u8]> = self.buf.as_slice().into();
 
@@ -46,7 +46,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// A comment, long or short. The `--` is already consumed.
-    pub(super) fn skip_comment(&mut self) -> Result<(), LexError> {
+    pub(super) fn skip_comment(&mut self) -> Result<(), SyntaxError> {
         if self.peek() == Some(b'[') {
             let open_at = self.pos;
             if let level @ 2.. = self.long_bracket_level() {
@@ -74,7 +74,7 @@ impl<'a> Lexer<'a> {
         level: usize,
         open_at: usize,
         form: LongForm,
-    ) -> Result<(), LexError> {
+    ) -> Result<(), SyntaxError> {
         self.buf.clear();
         self.pos += 1; // the second bracket
 
@@ -91,8 +91,8 @@ impl<'a> Lexer<'a> {
                     let open_at = open_at as u32;
 
                     return Err(self.eof_error(match form {
-                        LongForm::String => LexErrorKind::UnfinishedLongString { open_at },
-                        LongForm::Comment => LexErrorKind::UnfinishedLongComment { open_at },
+                        LongForm::String => SyntaxErrorKind::UnfinishedLongString { open_at },
+                        LongForm::Comment => SyntaxErrorKind::UnfinishedLongComment { open_at },
                     }));
                 }
 

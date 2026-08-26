@@ -3,10 +3,9 @@
 use std::io::Write;
 use std::process::ExitCode;
 
-use ruta_syntax::lexer::Lexer;
-use ruta_syntax::lexer::error::LexError;
+use ruta_syntax::error::SyntaxError;
 use ruta_syntax::line_index::LineIndex;
-use ruta_syntax::token::TokenKind;
+use ruta_syntax::parser::parse_chunk;
 
 #[cfg(windows)]
 const LINE_END: &[u8] = b"\r\n";
@@ -36,22 +35,11 @@ fn parse_only(progname: &str, path: &str) -> ExitCode {
         }
     };
 
-    let mut lexer = Lexer::new(&source);
-    loop {
-        match lexer.next_token() {
-            Ok(token) => {
-                if matches!(token.kind, TokenKind::Eof) {
-                    break;
-                }
-            }
-            Err(error) => {
-                report_lex_error(progname, path, &error, &source);
-                return ExitCode::FAILURE;
-            }
-        }
+    if let Err(error) = parse_chunk(&source) {
+        report_syntax_error(progname, path, &error, &source);
+        return ExitCode::FAILURE;
     }
 
-    report(format!("{progname}: {path}: parsing is not implemented").as_bytes());
     ExitCode::FAILURE
 }
 
@@ -65,7 +53,7 @@ fn report(line: &[u8]) {
     let _ = std::io::stderr().write_all(&out);
 }
 
-fn report_lex_error(progname: &str, path: &str, error: &LexError, source: &[u8]) {
+fn report_syntax_error(progname: &str, path: &str, error: &SyntaxError, source: &[u8]) {
     let lines = LineIndex::new(source);
     let mut line = format!("{progname}: {path}:{}: ", error.line(&lines)).into_bytes();
     line.extend_from_slice(&error.message(&lines));

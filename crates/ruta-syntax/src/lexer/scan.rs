@@ -1,14 +1,14 @@
 //! One token per cell, and the branch that decides which kind it is.
 
+use crate::error::SyntaxError;
 use crate::token::{Token, TokenKind, keyword};
 
 use super::Lexer;
 use super::bytes::{is_name_part, is_name_start};
-use super::error::LexError;
 
 impl<'a> Lexer<'a> {
     /// The next token. At the end of the source this keeps returning `TokenKind::eof`.
-    pub fn next_token(&mut self) -> Result<Token<'a>, LexError> {
+    pub fn next_token(&mut self) -> Result<Token<'a>, SyntaxError> {
         loop {
             let start = self.pos;
             let Some(byte) = self.peek() else {
