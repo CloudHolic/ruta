@@ -40,7 +40,7 @@ fn parse_only(progname: &str, path: &str) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    ExitCode::FAILURE
+    ExitCode::SUCCESS
 }
 
 /// Lua's own library writes through the C runtime, which on Windows turns `\n` into `\r\n`.
