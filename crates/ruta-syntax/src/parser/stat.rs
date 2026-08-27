@@ -1,6 +1,6 @@
 //! Statements and blocks.
 
-use crate::ast::{Attribute, BlockId, ExprKind, StatId, StatKind, VarName};
+use crate::ast::{Attribute, BlockId, ExprId, ExprKind, StatId, StatKind, VarName};
 use crate::error::{SyntaxError, SyntaxErrorKind};
 use crate::token::TokenKind;
 
@@ -12,7 +12,7 @@ impl<'a> Parser<'a> {
         let body = self.block()?;
 
         if !matches!(self.current.kind, TokenKind::Eof) {
-            return Err(self.not_implemented());
+            return Err(self.syntax(SyntaxErrorKind::Expected(TokenKind::Eof.describe().into())));
         }
 
         Ok(body)
@@ -39,6 +39,16 @@ impl<'a> Parser<'a> {
         Ok(self.builder.block(stats.into_boxed_slice(), span))
     }
 
+    /// A loop body.
+    fn loop_block(&mut self) -> Result<BlockId, SyntaxError> {
+        let outer = self.loops;
+        self.loops += 1;
+        let body = self.block();
+        self.loops = outer;
+
+        body
+    }
+
     /// The tokens that close a block without being part of it.
     fn block_follows(&self) -> bool {
         matches!(
@@ -63,28 +73,28 @@ impl<'a> Parser<'a> {
                     self.advance()?;
                     return Ok(None);
                 }
-                TokenKind::If => self.if_stat()?,
+                TokenKind::If => self.if_stat(start)?,
                 TokenKind::While => {
                     self.advance()?;
                     let condition = self.expr()?;
                     self.expect(TokenKind::Do)?;
-                    let body = self.block()?;
-                    self.expect(TokenKind::End)?;
+                    let body = self.loop_block()?;
+                    self.expect_match(TokenKind::End, TokenKind::While, start)?;
 
                     StatKind::While { condition, body }
                 }
                 TokenKind::Do => {
                     self.advance()?;
                     let body = self.block()?;
-                    self.expect(TokenKind::End)?;
+                    self.expect_match(TokenKind::End, TokenKind::Do, start)?;
 
                     StatKind::Do(body)
                 }
-                TokenKind::For => self.for_stat()?,
+                TokenKind::For => self.for_stat(start)?,
                 TokenKind::Repeat => {
                     self.advance()?;
-                    let body = self.block()?;
-                    self.expect(TokenKind::Until)?;
+                    let body = self.loop_block()?;
+                    self.expect_match(TokenKind::Until, TokenKind::Repeat, start)?;
 
                     StatKind::Repeat {
                         body,
@@ -100,6 +110,10 @@ impl<'a> Parser<'a> {
                     StatKind::Label(name)
                 }
                 TokenKind::Break => {
+                    if self.loops == 0 {
+                        return Err(self.syntax(SyntaxErrorKind::BreakOutsideLoop));
+                    }
+
                     self.advance()?;
                     StatKind::Break
                 }
@@ -135,7 +149,7 @@ impl<'a> Parser<'a> {
     }
 
     /// `ifstat -> 'if' expr 'then' block { 'elseif' expr 'then' block } ['else' block] 'end'`
-    fn if_stat(&mut self) -> Result<StatKind<'a>, SyntaxError> {
+    fn if_stat(&mut self, start: u32) -> Result<StatKind<'a>, SyntaxError> {
         let mut arms = Vec::new();
 
         loop {
@@ -155,7 +169,7 @@ impl<'a> Parser<'a> {
         } else {
             None
         };
-        self.expect(TokenKind::End)?;
+        self.expect_match(TokenKind::End, TokenKind::If, start)?;
 
         Ok(StatKind::If {
             arms: arms.into_boxed_slice(),
@@ -164,15 +178,19 @@ impl<'a> Parser<'a> {
     }
 
     /// `forstat -> 'for' (NAME '=' exp ',' exp [',' exp] | NAME { ',' NAME } 'in' explist) 'do' block 'end'`
-    fn for_stat(&mut self) -> Result<StatKind<'a>, SyntaxError> {
+    fn for_stat(&mut self, start: u32) -> Result<StatKind<'a>, SyntaxError> {
         self.advance()?;
         let first = self.name()?;
 
+        if !self.at_byte(b'=') && !self.at_byte(b',') && !matches!(self.current.kind, TokenKind::In)
+        {
+            return Err(self.syntax(SyntaxErrorKind::EqualsOrInExpected));
+        }
+
         let kind = if self.eat_byte(b'=')? {
             let start = self.expr()?;
-            if !self.eat_byte(b',')? {
-                return Err(self.not_implemented());
-            }
+            self.expect(TokenKind::Byte(b','))?;
+
             let limit = self.expr()?;
             let step = if self.eat_byte(b',')? {
                 Some(self.expr()?)
@@ -186,7 +204,7 @@ impl<'a> Parser<'a> {
                 start,
                 limit,
                 step,
-                body: self.block()?,
+                body: self.loop_block()?,
             }
         } else {
             let mut names = vec![first];
@@ -201,11 +219,11 @@ impl<'a> Parser<'a> {
             StatKind::GenericFor {
                 names: names.into_boxed_slice(),
                 exprs: exprs.into_boxed_slice(),
-                body: self.block()?,
+                body: self.loop_block()?,
             }
         };
 
-        self.expect(TokenKind::End)?;
+        self.expect_match(TokenKind::End, TokenKind::For, start)?;
         Ok(kind)
     }
 
@@ -260,14 +278,16 @@ impl<'a> Parser<'a> {
         let first = self.suffixed_expr()?;
 
         if self.at_byte(b'=') || self.at_byte(b',') {
+            self.check_assignable(first)?;
+
             let mut targets = vec![first];
             while self.eat_byte(b',')? {
-                targets.push(self.suffixed_expr()?);
+                let target = self.suffixed_expr()?;
+                self.check_assignable(target)?;
+                targets.push(target);
             }
 
-            if !self.eat_byte(b'=')? {
-                return Err(self.not_implemented());
-            }
+            self.expect(TokenKind::Byte(b'='))?;
 
             let values = self.expr_list()?;
             return Ok(StatKind::Assign {
@@ -281,10 +301,21 @@ impl<'a> Parser<'a> {
             self.builder.kind_of(first),
             ExprKind::Call { .. } | ExprKind::Method { .. }
         ) {
-            return Err(self.not_implemented());
+            return Err(self.syntax(SyntaxErrorKind::SyntaxError));
         }
 
         Ok(StatKind::Expr(first))
+    }
+
+    fn check_assignable(&self, target: ExprId) -> Result<(), SyntaxError> {
+        if matches!(
+            self.builder.kind_of(target),
+            ExprKind::Name(_) | ExprKind::Index { .. }
+        ) {
+            return Ok(());
+        }
+
+        Err(self.syntax(SyntaxErrorKind::SyntaxError))
     }
 
     /// `globalstat -> 'global' ('function' NAME funcbody
@@ -371,9 +402,7 @@ impl<'a> Parser<'a> {
         }
 
         let name = self.name()?;
-        if !self.eat_byte(b'>')? {
-            return Err(self.not_implemented());
-        }
+        self.expect(TokenKind::Byte(b'>'))?;
 
         match name {
             b"const" => Ok(Some(Attribute::Const)),

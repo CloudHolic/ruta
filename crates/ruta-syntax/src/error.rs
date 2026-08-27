@@ -21,12 +21,29 @@ pub enum SyntaxErrorKind {
     DecimalEscapeTooLarge,
     InvalidEscapeSequence,
     InvalidLongStringDelimiter,
-    UnfinishedLongString { open_at: u32 },
-    UnfinishedLongComment { open_at: u32 },
+    UnfinishedLongString {
+        open_at: u32,
+    },
+    UnfinishedLongComment {
+        open_at: u32,
+    },
     UnknownAttribute(Box<[u8]>),
     MultipleToBeClosed,
+    /// `%s expected`, holding a token named the way an error message names it.
+    Expected(Box<str>),
+    ExpectedToClose {
+        expected: Box<str>,
+        open: Box<str>,
+        open_at: u32,
+    },
+    EqualsOrInExpected,
+    NameOrDotsExpected,
+    FunctionArgumentsExpected,
+    UnexpectedSymbol,
+    VarargsOutsideVarargFunction,
+    SyntaxError,
+    BreakOutsideLoop,
     GlobalToBeClosed,
-    NotImplemented,
 }
 
 /// What the `near` clause of a message shows.
@@ -85,10 +102,32 @@ impl SyntaxError {
             SyntaxErrorKind::MultipleToBeClosed => {
                 "multiple to-be-closed variables in local list".to_owned()
             }
+            SyntaxErrorKind::Expected(text) => format!("{text} expected"),
+            SyntaxErrorKind::ExpectedToClose {
+                expected,
+                open,
+                open_at,
+            } => {
+                let open_line = lines.line_of(*open_at);
+
+                if open_line == lines.line_of(self.at) {
+                    format!("{expected} expected")
+                } else {
+                    format!("{expected} expected (to close {open} at line {open_line})")
+                }
+            }
+            SyntaxErrorKind::EqualsOrInExpected => "'=' or 'in' expected".to_owned(),
+            SyntaxErrorKind::NameOrDotsExpected => "<name> or '...' expected".to_owned(),
+            SyntaxErrorKind::FunctionArgumentsExpected => "function arguments expected".to_owned(),
+            SyntaxErrorKind::UnexpectedSymbol => "unexpected symbol".to_owned(),
+            SyntaxErrorKind::VarargsOutsideVarargFunction => {
+                "cannot use '...' outside a vararg function".to_owned()
+            }
+            SyntaxErrorKind::SyntaxError => "syntax error".to_owned(),
+            SyntaxErrorKind::BreakOutsideLoop => "break outside loop".to_owned(),
             SyntaxErrorKind::GlobalToBeClosed => {
                 "global variables cannot be to-be-closed".to_owned()
             }
-            SyntaxErrorKind::NotImplemented => "parsing is not implemented".to_owned(),
         }
     }
 }

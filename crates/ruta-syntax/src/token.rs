@@ -71,18 +71,23 @@ impl TokenKind<'_> {
     /// How a token is named inside an error message.
     pub fn describe(&self) -> String {
         match self {
-            TokenKind::Byte(byte) => {
-                if (0x20..=0x7e).contains(byte) {
-                    format!("'{}'", *byte as char)
-                } else {
-                    format!("'<\\{byte}>'")
-                }
+            TokenKind::Name(_)
+            | TokenKind::Int(_)
+            | TokenKind::Float(_)
+            | TokenKind::Str(_)
+            | TokenKind::Eof => self.spelling().to_owned(),
+            written => format!("'{}'", String::from_utf8_lossy(&written.symbol())),
+        }
+    }
+
+    /// The characters a token is written with, which is what a `near` clause quotes.
+    pub fn symbol(&self) -> Vec<u8> {
+        match self {
+            TokenKind::Byte(byte) if !(0x20..=0x7e).contains(byte) => {
+                format!("<\\{byte}>").into_bytes()
             }
-            TokenKind::Name(_) | TokenKind::Int(_) | TokenKind::Float(_) | TokenKind::Str(_) => {
-                self.spelling().to_owned()
-            }
-            TokenKind::Eof => self.spelling().to_owned(),
-            fixed => format!("'{}'", fixed.spelling()),
+            TokenKind::Byte(byte) => vec![*byte],
+            named => named.spelling().as_bytes().to_vec(),
         }
     }
 

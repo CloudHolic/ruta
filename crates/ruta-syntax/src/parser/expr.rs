@@ -1,7 +1,7 @@
 //! Expressions, and the priority ladder that shapes them.
 
 use crate::ast::{BinOp, ExprId, ExprKind, Field, UnOp};
-use crate::error::SyntaxError;
+use crate::error::{SyntaxError, SyntaxErrorKind};
 use crate::token::TokenKind;
 
 use super::Parser;
@@ -65,7 +65,13 @@ impl<'a> Parser<'a> {
             TokenKind::Int(value) => ExprKind::Int(*value),
             TokenKind::Float(value) => ExprKind::Float(*value),
             TokenKind::Str(bytes) => ExprKind::Str(bytes.clone()),
-            TokenKind::Dots => ExprKind::Vararg,
+            TokenKind::Dots => {
+                if !self.varargs {
+                    return Err(self.syntax(SyntaxErrorKind::VarargsOutsideVarargFunction));
+                }
+
+                ExprKind::Vararg
+            }
             TokenKind::Byte(b'{') => return self.table(),
             TokenKind::Function => return self.func_expr(start),
             _ => return self.suffixed_expr(),
@@ -86,18 +92,18 @@ impl<'a> Parser<'a> {
                 .expr(ExprKind::Name(name), self.span_from(start)));
         }
 
-        if self.eat_byte(b'(')? {
+        if self.at_byte(b'(') {
+            let open_at = self.current.span.start;
+            self.advance()?;
             let inner = self.expr()?;
-            if !self.eat_byte(b')')? {
-                return Err(self.not_implemented());
-            }
+            self.expect_match(TokenKind::Byte(b')'), TokenKind::Byte(b'('), open_at)?;
 
             return Ok(self
                 .builder
                 .expr(ExprKind::Paren(inner), self.span_from(start)));
         }
 
-        Err(self.not_implemented())
+        Err(self.syntax(SyntaxErrorKind::UnexpectedSymbol))
     }
 
     /// `suffixedexp -> primaryexp { '.' NAME | '[' expr ']' | ':' NAME args | args }`
@@ -116,19 +122,14 @@ impl<'a> Parser<'a> {
                 TokenKind::Byte(b'[') => {
                     self.advance()?;
                     let key = self.expr()?;
-                    if !self.eat_byte(b']')? {
-                        return Err(self.not_implemented());
-                    }
+                    self.expect(TokenKind::Byte(b']'))?;
 
                     self.builder
                         .expr(ExprKind::Index { object: left, key }, self.span_from(start))
                 }
                 TokenKind::Byte(b':') => {
                     self.advance()?;
-                    let Some(name) = self.current_name() else {
-                        return Err(self.not_implemented());
-                    };
-                    self.advance()?;
+                    let name = self.name()?;
                     let args = self.args()?;
 
                     self.builder.expr(
@@ -153,16 +154,16 @@ impl<'a> Parser<'a> {
 
     /// `args -> '(' [explist] ')' | tablector | STRING`
     fn args(&mut self) -> Result<Box<[ExprId]>, SyntaxError> {
-        if self.eat_byte(b'(')? {
+        if self.at_byte(b'(') {
+            let open_at = self.current.span.start;
+            self.advance()?;
+
             let list = if self.at_byte(b')') {
                 Vec::new()
             } else {
                 self.expr_list()?
             };
-
-            if !self.eat_byte(b')')? {
-                return Err(self.not_implemented());
-            }
+            self.expect_match(TokenKind::Byte(b')'), TokenKind::Byte(b'('), open_at)?;
 
             return Ok(list.into_boxed_slice());
         }
@@ -174,7 +175,7 @@ impl<'a> Parser<'a> {
 
         let literal = match &self.current.kind {
             TokenKind::Str(bytes) => bytes.clone(),
-            _ => return Err(self.not_implemented()),
+            _ => return Err(self.syntax(SyntaxErrorKind::FunctionArgumentsExpected)),
         };
         let span = self.current.span;
         self.advance()?;
@@ -196,9 +197,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        if !self.eat_byte(b'}')? {
-            return Err(self.not_implemented());
-        }
+        self.expect_match(TokenKind::Byte(b'}'), TokenKind::Byte(b'{'), start)?;
 
         Ok(self.builder.expr(
             ExprKind::Table(fields.into_boxed_slice()),
@@ -209,9 +208,8 @@ impl<'a> Parser<'a> {
     fn field(&mut self) -> Result<Field<'a>, SyntaxError> {
         if self.eat_byte(b'[')? {
             let key = self.expr()?;
-            if !self.eat_byte(b']')? || !self.eat_byte(b'=')? {
-                return Err(self.not_implemented());
-            }
+            self.expect(TokenKind::Byte(b']'))?;
+            self.expect(TokenKind::Byte(b'='))?;
 
             return Ok(Field::Keyed {
                 key,
@@ -237,11 +235,8 @@ impl<'a> Parser<'a> {
 
     /// The name after `.` or in `function a.b`, as the string key it stands for.
     pub(super) fn name_as_string(&mut self) -> Result<ExprId, SyntaxError> {
-        let Some(name) = self.current_name() else {
-            return Err(self.not_implemented());
-        };
         let span = self.current.span;
-        self.advance()?;
+        let name = self.name()?;
 
         Ok(self
             .builder

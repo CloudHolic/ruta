@@ -1,7 +1,7 @@
 //! Function bodies, and the three forms that carry one.
 
 use crate::ast::{ExprId, ExprKind, Func, FuncId, StatKind, Vararg};
-use crate::error::SyntaxError;
+use crate::error::{SyntaxError, SyntaxErrorKind};
 use crate::token::TokenKind;
 
 use super::Parser;
@@ -62,9 +62,7 @@ impl<'a> Parser<'a> {
 
     /// `funcbody -> '(' [parlist] ')' block 'end'`, with `start` at the `function` keyword.
     pub(super) fn func_body(&mut self, start: u32, is_method: bool) -> Result<FuncId, SyntaxError> {
-        if !self.eat_byte(b'(')? {
-            return Err(self.not_implemented());
-        }
+        self.expect(TokenKind::Byte(b'('))?;
 
         let mut params = Vec::new();
         let mut vararg = None;
@@ -83,6 +81,10 @@ impl<'a> Parser<'a> {
                     break;
                 }
 
+                if self.current_name().is_none() {
+                    return Err(self.syntax(SyntaxErrorKind::NameOrDotsExpected));
+                }
+
                 params.push(self.name()?);
                 if !self.eat_byte(b',')? {
                     break;
@@ -90,12 +92,16 @@ impl<'a> Parser<'a> {
             }
         }
 
-        if !self.eat_byte(b')')? {
-            return Err(self.not_implemented());
-        }
+        self.expect(TokenKind::Byte(b')'))?;
 
+        // A body starts its own counts: `...` and `break` never reach out of it.
+        let outer_varargs = std::mem::replace(&mut self.varargs, vararg.is_some());
+        let outer_loops = std::mem::replace(&mut self.loops, 0);
         let body = self.block()?;
-        self.expect(TokenKind::End)?;
+
+        self.varargs = outer_varargs;
+        self.loops = outer_loops;
+        self.expect_match(TokenKind::End, TokenKind::Function, start)?;
 
         let span = self.span_from(start);
         Ok(self.builder.func(Func {

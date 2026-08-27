@@ -103,7 +103,8 @@ fn write_corpus(capture: &Path, out_dir: &Path, seen: &mut HashSet<Vec<u8>>) -> 
 
         // A leading ESC means bytecode rather than source.
         let is_binary = chunk.first() == Some(&0x1B);
-        if chunk.len() > MAX_CHUNK || is_binary || !seen.insert(chunk.to_vec()) {
+        let truncates = chunk.contains(&0x1A);
+        if chunk.len() > MAX_CHUNK || is_binary || truncates || !seen.insert(chunk.to_vec()) {
             continue;
         }
 

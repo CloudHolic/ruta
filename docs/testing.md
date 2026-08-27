@@ -87,10 +87,10 @@ cargo test --test parse
 ```
 ruta parse - Lua 5.5.1
 
-  files        0/34
-  corpus       34/603
+  files        34/34
+  corpus       576/602
 
-  total        34/637
+  total        610/636
 ```
 
 **files** is every `.lua` in the suite — all 34, not the conformance board's 31. The three
@@ -105,15 +105,22 @@ and several hundred more — and they normally only execute when a file runs, wh
 intercepts `load` and dumps every string chunk. Rerunning it reproduces the same files byte
 for byte.
 
+At the end of stage 1 the board reads **34/34 and 576/602**, and that is full marks for what a
+parser can decide. The 26 cases it still misses are not parser work: 25 need name resolution
+(stage 2) — `attempt to assign to const variable`, the `<goto>` and label rules, `variable not
+declared` — and one needs the code generator (stage 4), `too many returns (limit is 255)`.
+Stage 2 takes the board to 601, stage 4 to 602.
+
 Extraction is selection, not collection. Taken as it comes, the suite yields over 100000
 distinct chunks and 33 MB, almost all of it `constructs.lua` permuting the same few shapes.
-Three limits cut it to 599:
+Four limits cut it to 598:
 
-| Limit           | Value   | Why                                                                                                        |
-| --------------- | ------- | ---------------------------------------------------------------------------------------------------------- |
-| chunk size      | 4 KB    | Larger ones are generated stress sources, and each tests a code-generation limit that stage 1 cannot reach |
-| per source file | 100     | Process startup is 32 ms per side, so corpus size _is_ the scoreboard's running time                       |
-| bytecode        | dropped | `all.lua` round-trips every file through `string.dump`; undumping is stage 10                              |
+| Limit           | Value   | Why                                                                                                                                                                                 |
+| --------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| chunk size      | 4 KB    | Larger ones are generated stress sources, and each tests a code-generation limit that stage 1 cannot reach                                                                          |
+| per source file | 100     | Process startup is 32 ms per side, so corpus size _is_ the scoreboard's running time                                                                                                |
+| bytecode        | dropped | `all.lua` round-trips every file through `string.dump`; undumping is stage 10                                                                                                       |
+| `0x1A` anywhere | dropped | Windows opens a source file in text mode, where that byte ends it: the oracle would read less than was written, while the suite passes the same chunk to `load` and sees every byte |
 
 Chunks are deduplicated by content across the whole corpus, and `all.lua` is not extracted
 from at all — it re-runs the whole suite, so everything it captures belongs to another file
@@ -127,7 +134,7 @@ nothing hand-written can live there. Both are scored on the same axis, and neith
 expected output — `luac -p` decides every case as it runs.
 
 The soundness pair is the conformance board's, with the same discipline: `luac -p` against
-itself scores 34/34 and 603/603, and against a `ruta -p` that does nothing but fail it scores 0. **The stub has to fail loudly for the second number to mean anything** — one that exited 0
+itself scores 34/34 and 602/602, and against a `ruta -p` that does nothing but fail it scores 0. **The stub has to fail loudly for the second number to mean anything** — one that exited 0
 silently would match the reference on every file that parses, which is most of them.
 
 Byte-for-byte means the line ending too. On Windows the reference writes CRLF, because its
