@@ -1,6 +1,7 @@
 //! The parser.
 
 mod expr;
+mod func;
 mod stat;
 
 use crate::ast::{Ast, Builder};
@@ -73,6 +74,34 @@ impl<'a> Parser<'a> {
         Ok(true)
     }
 
+    /// Consumes a keyword or a multi-byte symbol when that is what is next.
+    fn eat(&mut self, kind: TokenKind<'static>) -> Result<bool, SyntaxError> {
+        if self.current.kind != kind {
+            return Ok(false);
+        }
+
+        self.advance()?;
+        Ok(true)
+    }
+
+    /// The same, for a token the grammar leaves no choice about.
+    fn expect(&mut self, kind: TokenKind<'static>) -> Result<(), SyntaxError> {
+        if self.eat(kind)? {
+            return Ok(());
+        }
+
+        Err(self.not_implemented())
+    }
+
+    fn name(&mut self) -> Result<&'a [u8], SyntaxError> {
+        let Some(name) = self.current_name() else {
+            return Err(self.not_implemented());
+        };
+        self.advance()?;
+
+        Ok(name)
+    }
+
     fn current_name(&self) -> Option<&'a [u8]> {
         match self.current.kind {
             TokenKind::Name(name) => Some(name),
@@ -82,7 +111,17 @@ impl<'a> Parser<'a> {
 
     /// From `start` to the end of the last consumed token.
     fn span_from(&self, start: u32) -> Span {
-        Span::new(start, self.last_end)
+        Span::new(start, self.last_end.max(start))
+    }
+
+    /// A semantic error: no `near` clause, and the line is the one hte last consumed token
+    /// ended on rather than the line the parser has reached.
+    fn semantic(&self, kind: SyntaxErrorKind) -> SyntaxError {
+        SyntaxError {
+            kind,
+            at: self.last_end,
+            near: Near::None,
+        }
     }
 
     /// What the grammar parser cannot handle yet.

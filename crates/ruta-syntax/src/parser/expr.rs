@@ -67,6 +67,7 @@ impl<'a> Parser<'a> {
             TokenKind::Str(bytes) => ExprKind::Str(bytes.clone()),
             TokenKind::Dots => ExprKind::Vararg,
             TokenKind::Byte(b'{') => return self.table(),
+            TokenKind::Function => return self.func_expr(start),
             _ => return self.suffixed_expr(),
         };
 
@@ -100,7 +101,7 @@ impl<'a> Parser<'a> {
     }
 
     /// `suffixedexp -> primaryexp { '.' NAME | '[' expr ']' | ':' NAME args | args }`
-    fn suffixed_expr(&mut self) -> Result<ExprId, SyntaxError> {
+    pub(super) fn suffixed_expr(&mut self) -> Result<ExprId, SyntaxError> {
         let start = self.current.span.start;
         let mut left = self.primary_expr()?;
 
@@ -235,7 +236,7 @@ impl<'a> Parser<'a> {
     }
 
     /// The name after `.` or in `function a.b`, as the string key it stands for.
-    fn name_as_string(&mut self) -> Result<ExprId, SyntaxError> {
+    pub(super) fn name_as_string(&mut self) -> Result<ExprId, SyntaxError> {
         let Some(name) = self.current_name() else {
             return Err(self.not_implemented());
         };

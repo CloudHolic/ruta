@@ -10,7 +10,7 @@ pub struct SyntaxError {
     pub near: Near,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyntaxErrorKind {
     MalformedNumber,
     UnfinishedString,
@@ -23,7 +23,9 @@ pub enum SyntaxErrorKind {
     InvalidLongStringDelimiter,
     UnfinishedLongString { open_at: u32 },
     UnfinishedLongComment { open_at: u32 },
-
+    UnknownAttribute(Box<[u8]>),
+    MultipleToBeClosed,
+    GlobalToBeClosed,
     NotImplemented,
 }
 
@@ -57,7 +59,7 @@ impl SyntaxError {
     }
 
     fn text(&self, lines: &LineIndex) -> String {
-        match self.kind {
+        match &self.kind {
             SyntaxErrorKind::MalformedNumber => "malformed number".to_owned(),
             SyntaxErrorKind::UnfinishedString => "unfinished string".to_owned(),
             SyntaxErrorKind::HexadecimalDigitExpected => "hexadecimal digit expected".to_owned(),
@@ -71,12 +73,21 @@ impl SyntaxError {
             }
             SyntaxErrorKind::UnfinishedLongString { open_at } => format!(
                 "unfinished long string (starting at line {})",
-                lines.line_of(open_at)
+                lines.line_of(*open_at)
             ),
             SyntaxErrorKind::UnfinishedLongComment { open_at } => format!(
                 "unfinished long comment (starting at line {})",
-                lines.line_of(open_at)
+                lines.line_of(*open_at)
             ),
+            SyntaxErrorKind::UnknownAttribute(name) => {
+                format!("unknown attribute '{}'", String::from_utf8_lossy(name))
+            }
+            SyntaxErrorKind::MultipleToBeClosed => {
+                "multiple to-be-closed variables in local list".to_owned()
+            }
+            SyntaxErrorKind::GlobalToBeClosed => {
+                "global variables cannot be to-be-closed".to_owned()
+            }
             SyntaxErrorKind::NotImplemented => "parsing is not implemented".to_owned(),
         }
     }
