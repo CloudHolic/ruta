@@ -8,21 +8,19 @@ Current position: **stage 0 complete, stage 1 next. Scoreboard 0/31.**
 
 ## Definition of done
 
-| Milestone | Condition |
-|---|---|
-| v1.0 | Every file in the official test suite that does not depend on the C API passes |
-| v2.0 | C ABI embedding layer, the `T`-dependent files, and the remaining specification items |
+| Milestone | Condition                                                                             |
+| --------- | ------------------------------------------------------------------------------------- |
+| v1.0      | Every file in the official test suite that does not depend on the C API passes        |
+| v2.0      | C ABI embedding layer, the `T`-dependent files, and the remaining specification items |
 
 ## Stages
 
 **0 — Recon and scoreboard.** Complete.
 Workspace, vendored PUC-Lua 5.5.1 and the official suite, `cargo xtask build-reference`,
-`conformance/manifest.toml`, and the differential harness. No interpreter code. The exit
-condition was a scoreboard printing `0/31`, which is what a correct harness reports against
-an empty implementation. See [testing.md](testing.md).
+`conformance/manifest.toml`, and the differential harness. No interpreter code.
 
-**1 — Lexer, parser, AST.**
-Target: every scored file *parses*. This is not the same as passing — nothing executes yet —
+**1 — Lexer, parser, AST.** Complete.
+Target: every scored file _parses_. This is not the same as passing — nothing executes yet —
 but it is a real gate, because a parse error stops a file before any of it runs.
 
 **This stage is scored against `luac -p`, not against the main scoreboard.** See "Stages 1-3
@@ -63,7 +61,7 @@ checkerr([[
 ]], "%:2%:")   -- correct line in error message
 ```
 
-The suite asserts on the *line number* inside a compile error, not just the text.
+The suite asserts on the _line number_ inside a compile error, not just the text.
 
 `literals.lua` and `constructs.lua` are the closest thing to direct tests of this stage.
 Constraint 12 in [INVARIANTS.md](../INVARIANTS.md) binds the AST design and should be read
@@ -118,7 +116,7 @@ starts here and reuses `differential(script: &str)` from the harness.
 Targets: `math.lua`, `bitwise.lua`, `tpack.lua`, `sort.lua`.
 
 **6 — Metatables, error handling, `<close>`.**
-All metamethods, `pcall` and `error`, and to-be-closed variables. Error *messages* matter as
+All metamethods, `pcall` and `error`, and to-be-closed variables. Error _messages_ matter as
 much as error behavior — the suite asserts on their exact text.
 Targets: `events.lua`, `errors.lua`, `locals.lua`.
 Constraint 9 applies.
@@ -170,7 +168,7 @@ oversight; it is recorded here so that the absence is noticed rather than assume
 
 ## On the target files
 
-Stage 0 through 1 assignments are grounded in the suite investigation recorded in
-[testing.md](testing.md) and in the per-file notes in `conformance/manifest.toml`. The rest
-are expectations, not measurements. The scoreboard is the authority: when a file passes at a
-different stage than listed here, this document is what was wrong.
+Stage 0 through 1 assignments are grounded in the suite investigation recorded in the
+per-file notes in `conformance/manifest.toml`. The rest are expectations, not measurements.
+The scoreboard is the authority: when a file passes at a different stage than listed here,
+this document is what was wrong.

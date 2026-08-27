@@ -19,27 +19,39 @@ See [ADR 0005](docs/decisions/0005-zero-dependencies.md).
 
 ## Status
 
-**Stage 0 of 12 complete.** The scoreboard reads:
+**Stage 1 of 12 complete** — lexer, parser, AST. The scoreboards read:
 
 ```
 ruta conformance - Lua 5.5.1
 
-  v1.0        0/28
-  v2.0        0/3
-  impossible  -/0
+v1.0 0/28
+v2.0 0/3
+impossible -/0
 
-  total       0/31
-  skipped     3
+total 0/31
+skipped 3
+
+ruta parse - Lua 5.5.1
+
+files 34/34
+corpus 576/602
+
+total 610/636
 ```
 
-`0/31` is the correct result at this point: the harness is finished and the interpreter is
-not started. `ruta`'s `main` currently does nothing, and a scoreboard that gave it any credit
-for that would be broken. See [docs/roadmap.md](docs/roadmap.md) for what comes next.
+The conformance board compares program output, so it cannot move before there is a VM in
+stage 4; `0/31` is the correct result until then. Stages 1 through 3 are measured against the
+parse board instead — `ruta -p` against `luac -p`, over every file in the suite and over the
+602 chunks the suite hands to `load`.
 
-| Milestone | Condition |
-|---|---|
-| **v1.0** | Every file in the official test suite that does not depend on the C API passes |
-| **v2.0** | C ABI embedding layer, the `T`-dependent files, and the remaining specification items |
+`610/636` is full marks for a parser. The 26 cases still missing need name resolution
+(stage 2) or the code generator (stage 4), and neither is something a parser can decide. See
+[docs/roadmap.md](docs/roadmap.md) for what comes next.
+
+| Milestone | Condition                                                                             |
+| --------- | ------------------------------------------------------------------------------------- |
+| **v1.0**  | Every file in the official test suite that does not depend on the C API passes        |
+| **v2.0**  | C ABI embedding layer, the `T`-dependent files, and the remaining specification items |
 
 ## Building
 
@@ -80,8 +92,14 @@ reference as an oracle means the parts of Lua's behavior that the manual does no
 checked too.
 
 The number counts **agreement with the reference, not absolute passes** — a file that fails
-identically on both sides counts. [docs/testing.md](docs/testing.md) explains how to read the
-scoreboard, what the tiers mean, and where the two platforms diverge.
+identically on both sides counts. That is what makes the metric usable this early: knowing
+what each file _should_ print is exactly the knowledge the project does not have yet.
+
+The conformance board sorts its files into tiers. `v1.0` files run meaningfully without
+PUC-Lua's internal `T` library; the three `v2.0` files return early without it and need the
+C ABI layer before they mean anything. Three more are skipped and left out of the
+denominator: `heavy.lua` exhausts memory on purpose, and `tracegc.lua` and `bwcoercion.lua`
+are modules other tests require rather than tests themselves.
 
 ## Architecture
 
@@ -93,15 +111,15 @@ PUC-Lua is a single-pass compiler with no AST. `ruta` inserts an AST and an IR o
 that each pass can be read and observed on its own —
 [ADR 0002](docs/decisions/0002-ast-and-ir.md).
 
-| Path | Contents |
-|---|---|
-| `crates/ruta-syntax/` | lexer, parser, AST, scope resolution |
-| `crates/ruta-runtime/` | value representation, heap, GC, VM, standard library |
-| `crates/ruta-cli/` | the `ruta` binary |
-| `crates/ruta-conformance/` | differential test harness |
-| `vendor/` | PUC-Lua sources, the official test suite, the manual — never modified |
-| `conformance/` | scoring inputs: the test manifest, the `load` prelude, the parse corpus |
-| `docs/` | roadmap, testing guide, decision records |
+| Path                       | Contents                                                                |
+| -------------------------- | ----------------------------------------------------------------------- |
+| `crates/ruta-syntax/`      | lexer, parser, AST, scope resolution                                    |
+| `crates/ruta-runtime/`     | value representation, heap, GC, VM, standard library                    |
+| `crates/ruta-cli/`         | the `ruta` binary                                                       |
+| `crates/ruta-conformance/` | differential test harness                                               |
+| `vendor/`                  | PUC-Lua sources, the official test suite, the manual — never modified   |
+| `conformance/`             | scoring inputs: the test manifest, the `load` prelude, the parse corpus |
+| `docs/`                    | roadmap and decision records                                            |
 
 [INVARIANTS.md](INVARIANTS.md) lists the thirteen design constraints that cannot be reversed
 later. They are worth reading before stages 3, 4, and 8 in particular.
