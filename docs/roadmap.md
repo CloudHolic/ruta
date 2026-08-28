@@ -4,7 +4,7 @@ Twelve stages from an empty workspace to a complete Lua 5.5.1. The order is chos
 each stage can be scored: every stage after 4 should move the number that `cargo test`
 prints.
 
-Current position: **stage 0 complete, stage 1 next. Scoreboard 0/31.**
+Current position: **stage 1 complete, stage 2 next. Conformance 0/31, parse 610/636.**
 
 ## Definition of done
 
@@ -161,7 +161,13 @@ number, which is the same problem stage 0 existed to solve.
 Stages 1 and 2 get their own oracle instead: **`luac -p`**, which parses without executing.
 `cargo xtask build-reference --luac` builds it from the same vendored sources, and `ruta -p`
 is the counterpart on this side. Accepted-versus-rejected and the exact text and line numbers
-of compile errors are all comparable this way, over the same 31 files.
+of compile errors are all comparable this way.
+
+It scores 34 files rather than the conformance board's 31. The three skipped files are
+skipped on grounds of what happens when they _run_ — exhausting memory, or being a module
+rather than a test — and none of that stops them from parsing. Its second axis is the corpus:
+the chunks the suite hands to `load`, which otherwise go unchecked until stage 4. What is in
+the corpus and why is in `conformance/README.md`.
 
 Stage 3 has no equivalent and is covered by Rust unit tests alone. That is a real gap, not an
 oversight; it is recorded here so that the absence is noticed rather than assumed.

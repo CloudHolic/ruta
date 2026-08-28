@@ -25,8 +25,11 @@ That runs each scored file under the reference interpreter with `extract-loads.l
 of it, dumps every string chunk passed to `load`, and keeps the ones worth scoring: at most
 4 KB, at most 100 per source file, no bytecode (`all.lua` round-trips every file through
 `string.dump`), and no duplicates. `all.lua` itself is not extracted from — it re-runs the
-whole suite, so everything it captures belongs to another file. The reasoning behind each
-limit is in [docs/testing.md](../docs/testing.md#the-parse-scoreboard).
+whole suite, so everything it captures belongs to another file.
+
+Each limit is there to keep the denominator meaningful. Every entry on the board counts the
+same, so a single generated stress case or a single prolific source would otherwise decide
+what the number measures; bytecode chunks are not parse cases at all.
 
 **The result is committed rather than generated on demand**, for two reasons.
 
@@ -58,6 +61,6 @@ and the `unfinished string` variant that reports the partial token rather than `
 messages would otherwise have no coverage at all. Raising the limit to reach them would add
 several hundred chunks to every scoreboard run for twelve cases.
 
-Each file is one snippet, named after the message it provokes, taken from the `Repro` column
-of [docs/errors.md](../docs/errors.md). **No expected output is recorded here either** — the
-comparison is differential, so `luac -p` decides what the answer is on every run.
+Each file is one snippet, named after the message it provokes. **No expected output is
+recorded here either** — the comparison is differential, so `luac -p` decides what the answer
+is on every run.
