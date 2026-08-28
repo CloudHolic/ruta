@@ -1,0 +1,144 @@
+# Corpus entries where `ruta -p` and `luac -p` are expected to disagree.
+#
+# Every one of these is a case the reference rejects and ruta accepts, because the check
+# belongs to a pass that does not exist yet. None of them is a parser defect. The parse
+# scoreboard reads this file so that it can tell a known gap from a regression: an entry
+# listed here and still failing is expected, an entry listed here that starts passing should
+# be removed, and a mismatch that is *not* listed here is a bug.
+#
+# 26 entries, against a corpus of 602. Recorded 2026-08-26, at the end of stage 1.
+#
+# `stage` is the stage that closes the gap. `error` is what the reference says, with the
+# chunk name and line elided.
+
+# --- Stage 2: label and goto scoping -----------------------------------------------
+#
+# A parser can build the goto and label nodes but cannot decide any of this. Visibility,
+# duplicate definition, and jumping into a local's scope are all questions about the shape
+# of the scope tree, which stage 2 is what builds.
+
+[cases."errors/016.lua"]
+stage = 2
+error = "label 'A' already defined on line 1"
+
+[cases."errors/017.lua"]
+stage = 2
+error = "no visible label 'A' for <goto> at line 2"
+
+[cases."goto/001.lua"]
+stage = 2
+error = "no visible label 'l1' for <goto> at line 1"
+
+[cases."goto/002.lua"]
+stage = 2
+error = "no visible label 'l1' for <goto> at line 1"
+
+[cases."goto/003.lua"]
+stage = 2
+error = "label 'l1' already defined on line 1"
+
+[cases."goto/004.lua"]
+stage = 2
+error = "label 'l1' already defined on line 1"
+
+[cases."goto/005.lua"]
+stage = 2
+error = "<goto l1> at line 1 jumps into the scope of 'aa'"
+
+[cases."goto/006.lua"]
+stage = 2
+error = "<goto l2> at line 1 jumps into the scope of '*'"
+note = "The '*' is a global declaration, so this one needs the global rules as well as the label rules."
+
+[cases."goto/007.lua"]
+stage = 2
+error = "<goto l1> at line 1 jumps into the scope of 'aa'"
+
+[cases."goto/008.lua"]
+stage = 2
+error = "no visible label 'l1' for <goto> at line 1"
+
+[cases."goto/009.lua"]
+stage = 2
+error = "no visible label 'l1' for <goto> at line 1"
+
+[cases."goto/010.lua"]
+stage = 2
+error = "<goto cont> at line 2 jumps into the scope of 'xuxu'"
+
+# --- Stage 2: global declarations --------------------------------------------------
+#
+# Stage 1 parses `global` in all its forms; deciding whether a name was declared is a
+# resolution question. `_ENV is global` is the same rule seen from the other side.
+
+[cases."goto/012.lua"]
+stage = 2
+error = "variable 'X' not declared"
+
+[cases."goto/013.lua"]
+stage = 2
+error = "variable 'XX' not declared"
+
+[cases."goto/016.lua"]
+stage = 2
+error = "_ENV is global when accessing variable 'a'"
+
+[cases."goto/017.lua"]
+stage = 2
+error = "variable 'XXX' not declared"
+
+# --- Stage 2: assignment to read-only variables ------------------------------------
+#
+# Two different sources of read-only-ness land in the same message. `<const>` attributes
+# are attached by the parser but only mean something once assignment targets are resolved;
+# for-loop control variables are read-only by the 5.5 rule, and in a generic for that is
+# the first variable only.
+
+[cases."goto/019.lua"]
+stage = 2
+error = "attempt to assign to const variable 'foo'"
+
+[cases."goto/020.lua"]
+stage = 2
+error = "attempt to assign to const variable 'foo'"
+
+[cases."goto/021.lua"]
+stage = 2
+error = "attempt to assign to const variable 'Y'"
+
+[cases."goto/022.lua"]
+stage = 2
+error = "attempt to assign to const variable 'Y'"
+
+[cases."nextvar/001.lua"]
+stage = 2
+error = "attempt to assign to const variable 'i'"
+note = "A for-loop control variable, not a <const> local."
+
+[cases."nextvar/002.lua"]
+stage = 2
+error = "attempt to assign to const variable 'v'"
+note = "A for-loop control variable, not a <const> local."
+
+[cases."vararg/003.lua"]
+stage = 2
+error = "attempt to assign to const variable 't'"
+
+[cases."vararg/004.lua"]
+stage = 2
+error = "attempt to assign to const variable 'extra'"
+
+[cases."vararg/005.lua"]
+stage = 2
+error = "attempt to assign to const variable 'a'"
+
+# --- Stage 4: code generation limits -----------------------------------------------
+#
+# PUC-Lua is a single-pass compiler, so its register and slot limits are reported by the
+# parser. ruta separates code generation from parsing, so this class of error cannot be
+# raised until stage 4 exists. This is the one case docs/roadmap.md warns about under
+# "what the parse scoreboard cannot cover".
+
+[cases."calls/017.lua"]
+stage = 4
+error = "too many returns (limit is 255) in main function"

@@ -9,6 +9,7 @@ here is build output — it is all committed on purpose.
 | `extract-loads.lua` | Prelude that intercepts `load` while the suite runs, used to build the parse corpus. |
 | `parse-corpus/` | The strings the suite passes to `load`, one file each. The parse scoreboard's second axis. |
 | `parse-cases/` | Hand-written cases covering what extraction misses. Scored on the same axis as `parse-corpus/`. |
+| `parse-expected.toml` | The corpus entries that are supposed to mismatch, and the stage that fixes each. |
 
 The intermediate files extraction produces — the raw captures and the throwaway copy of the
 suite it runs in — live under `target/` and are not committed.
@@ -64,3 +65,17 @@ several hundred chunks to every scoreboard run for twelve cases.
 Each file is one snippet, named after the message it provokes. **No expected output is
 recorded here either** — the comparison is differential, so `luac -p` decides what the answer
 is on every run.
+
+## `parse-expected.toml`
+
+A raw corpus number cannot tell a known gap from a regression. At the end of stage 1 the
+corpus stands at 576/602, and all 26 of the remaining entries are cases the reference rejects
+and ruta accepts because the check belongs to a pass that does not exist yet — 25 of them to
+scope resolution, one to code generation. None is a parser defect.
+
+Listing them makes the difference visible. An entry here that still mismatches is expected;
+an entry here that starts matching should be deleted; a mismatch that is **not** listed is a
+bug, and the scoreboard should say so rather than folding it into the same total.
+
+That also means the file is only useful if it is kept honest. Stage 2 should empty most of
+it, and an entry that survives a stage that was supposed to close it is a finding.

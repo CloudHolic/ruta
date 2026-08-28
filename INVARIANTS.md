@@ -1,7 +1,7 @@
 # Invariants
 
 Design constraints that cannot be reversed later. Everything else in `ruta` is open to
-revision; these thirteen are not.
+revision; these fourteen are not.
 
 A constraint earns a place here when getting it wrong means rewriting a subsystem rather
 than editing it. That is a narrow bar on purpose — this file stays short so that it keeps
@@ -47,10 +47,11 @@ clarity for a density this project does not need.
 Registers must be addressable by integer stack index. The C ABI's stack indexing model and
 the VM's own operand decoding both assume it.
 
-**8. Lua function calls are not Rust recursion.** Stages 4, 7.
+**8. Lua function calls are not Rust recursion.** Stages 4, 7, 13.
 Call frames live on an explicit stack. A coroutine must be able to yield from an arbitrary
 call depth, which is impossible if the Lua call stack is interleaved with the host's. Native
-function frames go on the same explicit stack.
+function frames go on the same explicit stack, and so do the machine-code frames of stage 13
+— see constraint 14.
 
 **9. Error propagation has a single path.** Stages 6, 11.
 v2.0 has to be able to swap in a `longjmp` bridge for the C ABI. That is a local change only
@@ -88,3 +89,20 @@ stage 10 needs it again for `string.dump` round-trips.
 Both crates are split out of `ruta-syntax` and `ruta-runtime` at stage 4. The boundary has to
 exist from the moment they do; retrofitting it means untangling every site where the
 compiler learned to depend on runtime representation.
+
+**14. The IR and the collector are written as if a second backend already existed.** Stages 4, 8, 13.
+v3.0 lowers the same IR to machine code, and two things about that cannot be added afterward.
+
+Native frames share the explicit call stack of constraint 8. Machine code that used the host
+stack instead would reintroduce exactly the problem constraint 8 exists to prevent: a
+coroutine cannot yield across a frame the host owns. The generated code therefore has to
+maintain ruta's frame stack rather than rely on the hardware's, and an IR designed without
+that in mind produces code that cannot.
+
+Root discovery is not expressed in terms of VM frames. The collector walks the frame stack
+asking each frame for its roots; a frame answers for itself. Precise scanning of a native
+frame needs a root map the code generator emits, and a collector written to read VM register
+windows directly has no place to put one. Stage 8 builds the collector nine stages before
+stage 13 needs this, which is the whole reason it is written down here.
+
+Neither reservation costs anything at stage 4. Both are a rewrite at stage 13.

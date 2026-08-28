@@ -1,25 +1,24 @@
 # ruta
 
 A reimplementation of **Lua 5.5.1** in Rust, targeting the full language specification and
-standard library.
+standard library — and, unlike PUC-Lua, able to compile a program into a standalone
+executable.
 
 ## Why
 
-This is a learning project, and that shapes everything about it.
+The goal is not another working Lua. There is an excellent one already, and it is vendored in
+this repository as the reference oracle.
 
-The goal is not another working Lua — there is an excellent one already, and it is vendored
-in this repository as the reference oracle. The goal is to build a **bytecode VM, a garbage
-collector, and a code generator** by hand, because building them is the only way to
-understand them.
-
-That is also why the dependency policy is severe. Hash maps, arenas, parser generators, and
-float formatters all exist as mature crates, and every one of them would remove something
-this project exists to do. `ruta-syntax` and `ruta-runtime` take **no dependencies at all**.
-See [ADR 0005](docs/decisions/0005-zero-dependencies.md).
+The goal is a Lua whose **bytecode VM, garbage collector, and code generator were built by
+hand**, because building them is the only way to understand them. That shapes everything
+about the project, and it is why the dependency policy is severe: hash maps, arenas, parser
+generators, and float formatters all exist as mature crates, and every one of them would
+remove something this project exists to do. `ruta-syntax` and `ruta-runtime` take **no
+dependencies at all**. See [ADR 0005](docs/decisions/0005-zero-dependencies.md).
 
 ## Status
 
-**Stage 1 of 12 complete** — lexer, parser, AST. The scoreboards read:
+**Stage 1 of 14 complete** — lexer, parser, AST. The scoreboards read:
 
 ```
 ruta conformance - Lua 5.5.1
@@ -52,6 +51,12 @@ parse board instead — `ruta -p` against `luac -p`, over every file in the suit
 | --------- | ------------------------------------------------------------------------------------- |
 | **v1.0**  | Every file in the official test suite that does not depend on the C API passes        |
 | **v2.0**  | C ABI embedding layer, the `T`-dependent files, and the remaining specification items |
+| **v3.0**  | Standalone executables, and native code generation behind the same IR                 |
+
+Each is a place the project can stop and still be a finished thing. Note that v3.0's native
+backend is **not a performance feature** — Lua's dynamic typing means machine code has to
+inline the same checks the VM performs, so what it removes is dispatch overhead and not much
+else. [docs/roadmap.md](docs/roadmap.md) says what it is for instead.
 
 ## Building
 
@@ -121,7 +126,7 @@ that each pass can be read and observed on its own —
 | `conformance/`             | scoring inputs: the test manifest, the `load` prelude, the parse corpus |
 | `docs/`                    | roadmap and decision records                                            |
 
-[INVARIANTS.md](INVARIANTS.md) lists the thirteen design constraints that cannot be reversed
+[INVARIANTS.md](INVARIANTS.md) lists the fourteen design constraints that cannot be reversed
 later. They are worth reading before stages 3, 4, and 8 in particular.
 
 ## License

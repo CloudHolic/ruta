@@ -1,8 +1,8 @@
 # Roadmap
 
-Twelve stages from an empty workspace to a complete Lua 5.5.1. The order is chosen so that
-each stage can be scored: every stage after 4 should move the number that `cargo test`
-prints.
+Fourteen stages from an empty workspace to a Lua 5.5.1 that compiles to a standalone
+executable. The order is chosen so that each stage can be scored: every stage after 4 should
+move the number that `cargo test` prints.
 
 Current position: **stage 1 complete, stage 2 next. Conformance 0/31, parse 610/636.**
 
@@ -12,6 +12,11 @@ Current position: **stage 1 complete, stage 2 next. Conformance 0/31, parse 610/
 | --------- | ------------------------------------------------------------------------------------- |
 | v1.0      | Every file in the official test suite that does not depend on the C API passes        |
 | v2.0      | C ABI embedding layer, the `T`-dependent files, and the remaining specification items |
+| v3.0      | Standalone executables, and native code generation behind the same IR                 |
+
+Each milestone is a place the project can stop and still be a finished thing. v1.0 is a Lua
+that runs the language; v2.0 is one that C programs can embed and that C extensions can load;
+v3.0 is one that produces a binary.
 
 ## Stages
 
@@ -64,8 +69,7 @@ checkerr([[
 The suite asserts on the _line number_ inside a compile error, not just the text.
 
 `literals.lua` and `constructs.lua` are the closest thing to direct tests of this stage.
-Constraint 12 in [INVARIANTS.md](../INVARIANTS.md) binds the AST design and should be read
-before starting.
+Constraint 12 in [INVARIANTS.md](../INVARIANTS.md) binds the AST design.
 
 **2 — Scope resolution pass.**
 Locals, upvalue capture, `goto` and label scoping, and the `global` declarations from stage 1
@@ -90,8 +94,13 @@ irreversible afterward; read them first.
 The first stage that moves the conformance scoreboard. Register allocation, the dispatch
 loop, calls and returns on an explicit frame stack. Targets: `calls.lua`, `constructs.lua`,
 `vararg.lua`, `verybig.lua`, `cstack.lua`.
-Constraints 7, 8, 10, 11, and 13 apply. `ruta-compile` and `ruta-bytecode` are split out
+Constraints 7, 8, 10, 11, 13, and 14 apply. `ruta-compile` and `ruta-bytecode` are split out
 here, and constraint 13 has to hold from the commit that creates them.
+
+**This is the stage v3.0 reaches back into.** The IR designed here is the boundary a native
+backend attaches to nine stages later, and constraint 14 records what that costs now: native
+frames share the explicit frame stack, and root discovery cannot be written in terms of VM
+frames alone. Neither is expensive to reserve. Both are a rewrite to retrofit.
 
 **A call-depth limit is part of this stage's design, not an afterthought.** Unbounded
 recursion has to surface as a catchable Lua error; without a limit it is an OOM or a crash,
@@ -128,12 +137,12 @@ Targets: `coroutine.lua` (through line 1054; the rest is v2.0), `big.lua`.
 **8 — Garbage collection.**
 In order: mark-sweep, weak tables, ephemerons, finalizers, then incremental and generational
 modes. Targets: `gc.lua`, `gengc.lua` (through line 126), `nextvar.lua`.
-Constraints 1, 4, and 5 are what make this stage possible rather than a rewrite; re-read them
-before starting.
+Constraints 1, 4, 5, and 14 are what make this stage possible rather than a rewrite; re-read
+them before starting.
 
 **9 — Standard library long tail.**
-`string`, `table`, `os`, `io`, `utf8`. Pattern matching is implemented by hand — it is not a
-regex engine and cannot be delegated to one.
+`string`, `table`, `os`, `io`, `utf8`, and `package`. Pattern matching is implemented by hand
+— it is not a regex engine and cannot be delegated to one.
 Targets: `strings.lua`, `pm.lua`, `utf8.lua`, `files.lua`, `main.lua`.
 
 **10 — `dump`/`undump` and the `debug` library.**
@@ -146,11 +155,21 @@ more than the files do individually.
 
 **11 — C ABI embedding layer.**
 The `lua_*` surface, the `T` library's requirements, and `longjmp`-based error propagation
-swapped in behind the single path constraint 9 reserved.
+swapped in behind the single path constraint 9 reserved. `package.loadlib` and the C searcher
+land here too, which is what makes real extension modules — `lpeg`, `luasocket` — loadable.
 Targets: `api.lua`, `code.lua`, `memerr.lua` — the three files in the `v2.0` tier.
 See [ADR 0004](decisions/0004-defer-c-abi.md).
 
 **--- v2.0 ---**
+
+**12 — Standalone executables.**
+Bundling several Lua files, and the runtime, into one binary. See "What v3.0 is" below for
+why this is a smaller job than it sounds.
+
+**13 — Native code generation.**
+Lowering the IR to machine code, behind the boundary stage 4 established. See below.
+
+**--- v3.0 ---**
 
 ## Stages 1-3 and the parse scoreboard
 
@@ -171,6 +190,61 @@ the corpus and why is in `conformance/README.md`.
 
 Stage 3 has no equivalent and is covered by Rust unit tests alone. That is a real gap, not an
 oversight; it is recorded here so that the absence is noticed rather than assumed.
+
+## What v3.0 is
+
+PUC-Lua ships an interpreter that reads scripts. `ruta` should also be able to hand you a
+binary. Two separate things have to be true for that, and they are worth keeping apart
+because one is nearly free and the other is most of a compiler.
+
+### Stage 12 — bundling, not linking
+
+There is nothing to link. In C, a translation unit that calls `bar()` leaves an unresolved
+symbol for the linker to fill in; in Lua, `require "m"` is an ordinary runtime call that
+consults `package.loaded`, searches `package.path`, reads a file, compiles it, runs it, and
+caches the result. No cross-module reference survives to compile time, so there is nothing
+for a linker to resolve.
+
+What replaces it is `package.preload`. Compile each file to a chunk, install it under the
+module name, and `require` finds it before it ever touches the filesystem. That is what
+`luastatic` does, and it needs stage 9's `package` library and stage 10's serialization and
+very little else.
+
+The one hard part is deciding what to bundle. `require` takes an expression, and a program
+can compute a module name at runtime. Following string literals covers ordinary code;
+anything else has to be listed explicitly. Every tool in this space has the same limit —
+`deno compile`, PyInstaller — and the answer is to document it rather than to guess.
+
+**Statically linking C extension modules is an opt-in.** Dynamic loading, which stage 11
+already provides, asks nothing of the user: an already-built `lpeg.dll` opens at runtime.
+Linking one _into_ the executable means compiling it, which means a C toolchain on the
+machine doing the build. That is the only place `ruta` asks for one, and it stays behind a
+flag so that not asking remains the default.
+
+### Stage 13 — native code generation
+
+**This is not a performance feature, and the roadmap should not be read as promising one.**
+
+Lua is dynamically typed with metatable-driven operators, so `a + b` compiles to a chain of
+checks — both integers, either a float, a string that coerces, an `__add` metamethod, or an
+error naming the variable — and native code has to inline all of it. What disappears is
+dispatch overhead. The type checks stay. AOT compilation of a dynamic language without type
+feedback does not produce the multiples people expect from the word "native"; that is what
+tracing JITs like LuaJIT exist to get, by observing types at runtime rather than guessing at
+compile time.
+
+What stage 13 is actually for is the pipeline: attaching a code generator to a typed IR,
+defining a calling convention and frame layout, and scanning roots precisely in native frames.
+
+**The VM does not go away.** `load`, `dofile`, `require`, and `string.dump` are all in the
+specification, so the compiler and the interpreter both ship inside the executable, and code
+compiled at runtime keeps running on the VM. Native and interpreted frames therefore call
+each other in both directions and share a heap and a collector. Making that boundary coherent
+is the real content of this stage — see constraint 14, which is why it is reserved at stage 4
+rather than discovered here.
+
+Order within the stage: lower straight-line arithmetic and control flow first, then calls
+across the native/VM boundary, then root maps, then the rest.
 
 ## On the target files
 
