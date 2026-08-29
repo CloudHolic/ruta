@@ -1,5 +1,6 @@
 //! Building the PUC-Lua reference binaries with the `cc` crate rather tan Lua's makefile.
 
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::SystemTime;
@@ -51,8 +52,7 @@ pub(crate) fn build(driver: Driver) -> Result<()> {
     }
 
     let sources = lua_sources(&src, driver)?;
-    std::fs::create_dir_all(&obj_dir)
-        .with_context(|| format!("cannot create {}", obj_dir.display()))?;
+    fs::create_dir_all(&obj_dir).with_context(|| format!("cannot create {}", obj_dir.display()))?;
 
     let triple = host_triple()?;
     let mut build = cc::Build::new();
@@ -86,7 +86,7 @@ pub(crate) fn build(driver: Driver) -> Result<()> {
 /// Every `src/*.c` except the driver this build does not want.
 fn lua_sources(src: &Path, driver: Driver) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
-    for entry in std::fs::read_dir(src).with_context(|| format!("cannot read {}", src.display()))? {
+    for entry in fs::read_dir(src).with_context(|| format!("cannot read {}", src.display()))? {
         let path = entry?.path();
         let is_c = path.extension().is_some_and(|e| e == "c");
         let is_excluded = path.file_name().is_some_and(|n| n == driver.excluded());
@@ -112,7 +112,7 @@ fn is_up_to_date(exe: &Path, src: &Path) -> Result<bool> {
     };
 
     let mut newest = SystemTime::UNIX_EPOCH;
-    for entry in std::fs::read_dir(src)? {
+    for entry in fs::read_dir(src)? {
         let path = entry?.path();
         if path.extension().is_some_and(|e| e == "c" || e == "h") {
             newest = newest.max(path.metadata()?.modified()?);

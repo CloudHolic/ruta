@@ -1,6 +1,7 @@
 //! Manifest schema, loading and validation.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
@@ -71,8 +72,8 @@ struct RawEntry {
 impl Manifest {
     /// Load the manifest and check it describes exactly the `.lua` files in `suite_dir`.
     pub fn load(path: &Path, suite_dir: &Path) -> Result<Self> {
-        let text = std::fs::read_to_string(path)
-            .with_context(|| format!("cannot read {}", path.display()))?;
+        let text =
+            fs::read_to_string(path).with_context(|| format!("cannot read {}", path.display()))?;
         let raw: RawManifest =
             toml::from_str(&text).with_context(|| format!("cannot parse {}", path.display()))?;
 
@@ -114,7 +115,7 @@ impl Manifest {
     /// Both are errors.
     fn check_against_suite(&self, suite_dir: &Path) -> Result<()> {
         let mut on_disk = BTreeSet::new();
-        for entry in std::fs::read_dir(suite_dir)
+        for entry in fs::read_dir(suite_dir)
             .with_context(|| format!("cannot read {}", suite_dir.display()))?
         {
             let path = entry?.path();

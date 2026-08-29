@@ -1,7 +1,11 @@
 //! Executable `ruta`, a Lua Interpreter.
 
-use std::io::Write;
+use std::env;
+use std::fs;
+use std::io::{self, Write};
+use std::panic;
 use std::process::ExitCode;
+use std::thread;
 
 use ruta_syntax::error::SyntaxError;
 use ruta_syntax::line_index::LineIndex;
@@ -12,8 +16,25 @@ const LINE_END: &[u8] = b"\r\n";
 #[cfg(not(windows))]
 const LINE_END: &[u8] = b"\n";
 
+const STACK_SIZE: usize = 16 * 1024 * 1024;
+
 fn main() -> ExitCode {
-    let mut args = std::env::args();
+    let worker = thread::Builder::new().stack_size(STACK_SIZE).spawn(run);
+
+    match worker {
+        Ok(worker) => worker
+            .join()
+            .unwrap_or_else(|payload| panic::resume_unwind(payload)),
+        Err(error) => {
+            let progname = env::args().next().unwrap_or_else(|| "ruta".to_owned());
+            report(format!("{progname}: cannot start: {error}").as_bytes());
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> ExitCode {
+    let mut args = env::args();
     let progname = args.next().unwrap_or_else(|| "ruta".to_owned());
 
     match (args.next().as_deref(), args.next(), args.next()) {
@@ -27,7 +48,7 @@ fn main() -> ExitCode {
 
 /// Parse without executing, the way `luac -p` does.
 fn parse_only(progname: &str, path: &str) -> ExitCode {
-    let source = match std::fs::read(path) {
+    let source = match fs::read(path) {
         Ok(bytes) => strip_prelude(&bytes),
         Err(error) => {
             report(format!("{progname}: cannot open {path}: {error}").as_bytes());
@@ -50,7 +71,7 @@ fn report(line: &[u8]) {
     out.extend_from_slice(LINE_END);
 
     // Nothing left to report to if stderr itself cannot be written.
-    let _ = std::io::stderr().write_all(&out);
+    let _ = io::stderr().write_all(&out);
 }
 
 fn report_syntax_error(progname: &str, path: &str, error: &SyntaxError, source: &[u8]) {

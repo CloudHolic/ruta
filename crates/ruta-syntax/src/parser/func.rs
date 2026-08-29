@@ -1,5 +1,7 @@
 //! Function bodies, and the three forms that carry one.
 
+use std::mem;
+
 use crate::ast::{ExprId, ExprKind, Func, FuncId, StatKind, Vararg};
 use crate::error::{SyntaxError, SyntaxErrorKind};
 use crate::token::TokenKind;
@@ -95,8 +97,8 @@ impl<'a> Parser<'a> {
         self.expect(TokenKind::Byte(b')'))?;
 
         // A body starts its own counts: `...` and `break` never reach out of it.
-        let outer_varargs = std::mem::replace(&mut self.varargs, vararg.is_some());
-        let outer_loops = std::mem::replace(&mut self.loops, 0);
+        let outer_varargs = mem::replace(&mut self.varargs, vararg.is_some());
+        let outer_loops = mem::replace(&mut self.loops, 0);
         let body = self.block()?;
 
         self.varargs = outer_varargs;

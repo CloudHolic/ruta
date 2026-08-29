@@ -1,6 +1,7 @@
 //! Running both interpreters on the same input and comparing what comes out.
 
 use std::ffi::OsString;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -42,7 +43,7 @@ impl Harness {
     pub fn differential(&self, script: &str) -> Result<Comparison> {
         self.compare(
             &mut |dir| {
-                std::fs::write(dir.join(SCRIPT_NAME), script)
+                fs::write(dir.join(SCRIPT_NAME), script)
                     .with_context(|| format!("cannot write {SCRIPT_NAME}"))?;
                 Ok(vec![OsString::from(SCRIPT_NAME)])
             },
@@ -55,7 +56,7 @@ impl Harness {
     pub fn parse_file(&self, source: &Path) -> Result<Comparison> {
         self.compare(
             &mut |dir| {
-                std::fs::copy(source, dir.join(SCRIPT_NAME))
+                fs::copy(source, dir.join(SCRIPT_NAME))
                     .with_context(|| format!("cannot copy {}", source.display()))?;
                 Ok(vec![OsString::from("-p"), OsString::from(SCRIPT_NAME)])
             },
@@ -78,7 +79,7 @@ impl Harness {
 
                 match case.recipe {
                     Some(Recipe::Coroutine) => {
-                        std::fs::write(dir.join(DRIVER_NAME), coroutine_driver(&case.name))
+                        fs::write(dir.join(DRIVER_NAME), coroutine_driver(&case.name))
                             .with_context(|| format!("cannot write {DRIVER_NAME}"))?;
                         args.push(OsString::from(DRIVER_NAME));
                     }

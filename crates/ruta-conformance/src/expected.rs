@@ -1,6 +1,7 @@
 //! The corpus mismatches that are supposed to be there, and the stage that closes each.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
@@ -30,8 +31,8 @@ struct RawFile {
 
 impl Expected {
     pub fn load(path: &Path) -> Result<Self> {
-        let text = std::fs::read_to_string(path)
-            .with_context(|| format!("cannot read {}", path.display()))?;
+        let text =
+            fs::read_to_string(path).with_context(|| format!("cannot read {}", path.display()))?;
         let raw: RawFile =
             toml::from_str(&text).with_context(|| format!("cannot parse {}", path.display()))?;
 

@@ -1,9 +1,10 @@
 //! Where a case runs: the throwaway directory, and one interpreter inside it under a timeout.
 
 use std::ffi::OsString;
-use std::fs::File;
+use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
@@ -24,9 +25,9 @@ pub(crate) enum Sandbox {
 pub(crate) fn sandbox(workdir: &Path, side: &str, mode: Sandbox) -> Result<PathBuf> {
     let dir = workdir.join(side);
     if mode == Sandbox::Fresh && dir.exists() {
-        std::fs::remove_dir_all(&dir).with_context(|| format!("cannot clear {}", dir.display()))?;
+        fs::remove_dir_all(&dir).with_context(|| format!("cannot clear {}", dir.display()))?;
     }
-    std::fs::create_dir_all(&dir).with_context(|| format!("cannot create {}", dir.display()))?;
+    fs::create_dir_all(&dir).with_context(|| format!("cannot create {}", dir.display()))?;
 
     Ok(dir)
 }
@@ -64,7 +65,7 @@ pub(crate) fn run(
             break None;
         }
 
-        std::thread::sleep(POLL_INTERVAL);
+        thread::sleep(POLL_INTERVAL);
     };
 
     let Some(status) = status else {
@@ -72,18 +73,16 @@ pub(crate) fn run(
     };
 
     Ok(Some(Outcome {
-        stdout: strip_interpreter_path(std::fs::read(&stdout_path)?, program),
-        stderr: strip_interpreter_path(std::fs::read(&stderr_path)?, program),
+        stdout: strip_interpreter_path(fs::read(&stdout_path)?, program),
+        stderr: strip_interpreter_path(fs::read(&stderr_path)?, program),
         code: status.code(),
     }))
 }
 
 pub fn copy_dir(from: &Path, to: &Path) -> Result<()> {
-    std::fs::create_dir_all(to).with_context(|| format!("cannot create {}", to.display()))?;
+    fs::create_dir_all(to).with_context(|| format!("cannot create {}", to.display()))?;
 
-    for entry in
-        std::fs::read_dir(from).with_context(|| format!("cannot read {}", from.display()))?
-    {
+    for entry in fs::read_dir(from).with_context(|| format!("cannot read {}", from.display()))? {
         let entry = entry?;
         let source = entry.path();
         let target = to.join(entry.file_name());
@@ -91,7 +90,7 @@ pub fn copy_dir(from: &Path, to: &Path) -> Result<()> {
         if entry.file_type()?.is_dir() {
             copy_dir(&source, &target)?;
         } else {
-            std::fs::copy(&source, &target)
+            fs::copy(&source, &target)
                 .with_context(|| format!("cannot copy {}", source.display()))?;
         }
     }

@@ -1,5 +1,6 @@
 //! Parse-only scoreboard: `luac -p` against `ruta -p`.
 
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -145,8 +146,8 @@ fn collect_corpus(root: &Path) -> Result<Vec<(String, PathBuf)>> {
             continue;
         }
 
-        for entry in std::fs::read_dir(&current)
-            .with_context(|| format!("cannot read {}", current.display()))?
+        for entry in
+            fs::read_dir(&current).with_context(|| format!("cannot read {}", current.display()))?
         {
             let path = entry?.path();
             if path.is_dir() {

@@ -2,6 +2,7 @@
 //!
 //! Run as `cargo xtask <command>`.
 
+use std::env;
 use std::path::Path;
 
 use anyhow::{Result, bail};
@@ -14,7 +15,7 @@ mod reference;
 const USAGE: &str = "usage: cargo xtask <build-reference [--luac] | extract-parse-corpus>";
 
 fn main() -> Result<()> {
-    let mut args = std::env::args().skip(1);
+    let mut args = env::args().skip(1);
 
     match args.next().as_deref() {
         Some("build-reference") => {

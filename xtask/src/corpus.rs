@@ -1,8 +1,10 @@
 //! Extracting the parse corpus: the strings the official suite passes to `load`.
 
 use std::collections::HashSet;
+use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::str;
 
 use anyhow::{Context, Result, bail};
 use ruta_conformance::manifest::Manifest;
@@ -77,7 +79,7 @@ pub(crate) fn extract() -> Result<()> {
 
 /// Split one capture file into chunks and write the ones worth keeping.
 fn write_corpus(capture: &Path, out_dir: &Path, seen: &mut HashSet<Vec<u8>>) -> Result<usize> {
-    let Ok(data) = std::fs::read(capture) else {
+    let Ok(data) = fs::read(capture) else {
         return Ok(0);
     };
 
@@ -88,7 +90,7 @@ fn write_corpus(capture: &Path, out_dir: &Path, seen: &mut HashSet<Vec<u8>>) -> 
         let Some(newline) = rest.iter().position(|byte| *byte == b'\n') else {
             break;
         };
-        let len: usize = std::str::from_utf8(&rest[..newline])
+        let len: usize = str::from_utf8(&rest[..newline])
             .ok()
             .and_then(|s| s.parse().ok())
             .with_context(|| format!("malformed framing in {}", capture.display()))?;
@@ -108,12 +110,12 @@ fn write_corpus(capture: &Path, out_dir: &Path, seen: &mut HashSet<Vec<u8>>) -> 
             continue;
         }
 
-        std::fs::create_dir_all(out_dir)
+        fs::create_dir_all(out_dir)
             .with_context(|| format!("cannot create {}", out_dir.display()))?;
         kept += 1;
 
         let path = out_dir.join(format!("{kept:03}.lua"));
-        std::fs::write(&path, chunk).with_context(|| format!("cannot write {}", path.display()))?;
+        fs::write(&path, chunk).with_context(|| format!("cannot write {}", path.display()))?;
     }
 
     Ok(kept)
@@ -121,9 +123,9 @@ fn write_corpus(capture: &Path, out_dir: &Path, seen: &mut HashSet<Vec<u8>>) -> 
 
 fn reset_dir(dir: &Path) -> Result<()> {
     if dir.exists() {
-        std::fs::remove_dir_all(dir).with_context(|| format!("cannot clear {}", dir.display()))?;
+        fs::remove_dir_all(dir).with_context(|| format!("cannot clear {}", dir.display()))?;
     }
 
-    std::fs::create_dir_all(dir).with_context(|| format!("cannot create {}", dir.display()))?;
+    fs::create_dir_all(dir).with_context(|| format!("cannot create {}", dir.display()))?;
     Ok(())
 }
