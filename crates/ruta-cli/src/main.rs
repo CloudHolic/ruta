@@ -3,9 +3,7 @@
 use std::env;
 use std::fs;
 use std::io::{self, Write};
-use std::panic;
 use std::process::ExitCode;
-use std::thread;
 
 use ruta_syntax::error::SyntaxError;
 use ruta_syntax::line_index::LineIndex;
@@ -16,24 +14,7 @@ const LINE_END: &[u8] = b"\r\n";
 #[cfg(not(windows))]
 const LINE_END: &[u8] = b"\n";
 
-const STACK_SIZE: usize = 16 * 1024 * 1024;
-
 fn main() -> ExitCode {
-    let worker = thread::Builder::new().stack_size(STACK_SIZE).spawn(run);
-
-    match worker {
-        Ok(worker) => worker
-            .join()
-            .unwrap_or_else(|payload| panic::resume_unwind(payload)),
-        Err(error) => {
-            let progname = env::args().next().unwrap_or_else(|| "ruta".to_owned());
-            report(format!("{progname}: cannot start: {error}").as_bytes());
-            ExitCode::FAILURE
-        }
-    }
-}
-
-fn run() -> ExitCode {
     let mut args = env::args();
     let progname = args.next().unwrap_or_else(|| "ruta".to_owned());
 
