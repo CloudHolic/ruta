@@ -1,25 +1,25 @@
 //! Statements and blocks.
 
 use crate::ast::{Attribute, BlockId, ExprId, ExprKind, StatId, StatKind, VarName};
-use crate::error::{SyntaxError, SyntaxErrorKind};
+use crate::error::{Error, ErrorKind};
 use crate::token::TokenKind;
 
 use super::Parser;
 
 impl<'a> Parser<'a> {
     /// The chunk's own block, which has to reach the end of the source.
-    pub(super) fn chunk(&mut self) -> Result<BlockId, SyntaxError> {
+    pub(super) fn chunk(&mut self) -> Result<BlockId, Error> {
         let body = self.block()?;
 
         if !matches!(self.current.kind, TokenKind::Eof) {
-            return Err(self.syntax(SyntaxErrorKind::Expected(TokenKind::Eof.describe().into())));
+            return Err(self.syntax(ErrorKind::Expected(TokenKind::Eof.describe().into())));
         }
 
         Ok(body)
     }
 
     /// `block -> { stat } [retstat]`
-    pub(super) fn block(&mut self) -> Result<BlockId, SyntaxError> {
+    pub(super) fn block(&mut self) -> Result<BlockId, Error> {
         let start = self.current.span.start;
         let mut stats = Vec::new();
 
@@ -40,7 +40,7 @@ impl<'a> Parser<'a> {
     }
 
     /// A loop body.
-    fn loop_block(&mut self) -> Result<BlockId, SyntaxError> {
+    fn loop_block(&mut self) -> Result<BlockId, Error> {
         let outer = self.loops;
         self.loops += 1;
         let body = self.block();
@@ -62,7 +62,7 @@ impl<'a> Parser<'a> {
     }
 
     /// One statement, or nothing at all when it was an empty `;`.
-    fn statement(&mut self) -> Result<Option<StatId>, SyntaxError> {
+    fn statement(&mut self) -> Result<Option<StatId>, Error> {
         let start = self.current.span.start;
 
         let kind = if self.at_global_declaration()? {
@@ -111,7 +111,7 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::Break => {
                     if self.loops == 0 {
-                        return Err(self.syntax(SyntaxErrorKind::BreakOutsideLoop));
+                        return Err(self.syntax(ErrorKind::BreakOutsideLoop));
                     }
 
                     self.advance()?;
@@ -131,7 +131,7 @@ impl<'a> Parser<'a> {
     }
 
     /// `retstat -> 'return' [explist] [';']`
-    fn return_stat(&mut self) -> Result<StatId, SyntaxError> {
+    fn return_stat(&mut self) -> Result<StatId, Error> {
         let start = self.current.span.start;
         self.advance()?;
 
@@ -149,7 +149,7 @@ impl<'a> Parser<'a> {
     }
 
     /// `ifstat -> 'if' expr 'then' block { 'elseif' expr 'then' block } ['else' block] 'end'`
-    fn if_stat(&mut self, start: u32) -> Result<StatKind<'a>, SyntaxError> {
+    fn if_stat(&mut self, start: u32) -> Result<StatKind<'a>, Error> {
         let mut arms = Vec::new();
 
         loop {
@@ -178,13 +178,13 @@ impl<'a> Parser<'a> {
     }
 
     /// `forstat -> 'for' (NAME '=' exp ',' exp [',' exp] | NAME { ',' NAME } 'in' explist) 'do' block 'end'`
-    fn for_stat(&mut self, start: u32) -> Result<StatKind<'a>, SyntaxError> {
+    fn for_stat(&mut self, start: u32) -> Result<StatKind<'a>, Error> {
         self.advance()?;
         let first = self.name()?;
 
         if !self.at_byte(b'=') && !self.at_byte(b',') && !matches!(self.current.kind, TokenKind::In)
         {
-            return Err(self.syntax(SyntaxErrorKind::EqualsOrInExpected));
+            return Err(self.syntax(ErrorKind::EqualsOrInExpected));
         }
 
         let kind = if self.eat_byte(b'=')? {
@@ -228,7 +228,7 @@ impl<'a> Parser<'a> {
     }
 
     /// `localstat -> 'local' NAME attrib { ',' NAME attrib } ['=' explist]`
-    fn local_stat(&mut self) -> Result<StatKind<'a>, SyntaxError> {
+    fn local_stat(&mut self) -> Result<StatKind<'a>, Error> {
         self.advance()?;
 
         if matches!(self.current.kind, TokenKind::Function) {
@@ -251,7 +251,7 @@ impl<'a> Parser<'a> {
 
             if name.attribute == Some(Attribute::Close) {
                 if closing {
-                    return Err(self.semantic(SyntaxErrorKind::MultipleToBeClosed));
+                    return Err(self.semantic(ErrorKind::MultipleToBeClosed));
                 }
                 closing = true;
             }
@@ -274,7 +274,7 @@ impl<'a> Parser<'a> {
     }
 
     /// `exprstat -> suffixedexp { ',' suffixedexp } '=' explist | suffixdexp`
-    fn expr_stat(&mut self) -> Result<StatKind<'a>, SyntaxError> {
+    fn expr_stat(&mut self) -> Result<StatKind<'a>, Error> {
         let first = self.suffixed_expr()?;
 
         if self.at_byte(b'=') || self.at_byte(b',') {
@@ -301,13 +301,13 @@ impl<'a> Parser<'a> {
             self.builder.kind_of(first),
             ExprKind::Call { .. } | ExprKind::Method { .. }
         ) {
-            return Err(self.syntax(SyntaxErrorKind::SyntaxError));
+            return Err(self.syntax(ErrorKind::SyntaxError));
         }
 
         Ok(StatKind::Expr(first))
     }
 
-    fn check_assignable(&self, target: ExprId) -> Result<(), SyntaxError> {
+    fn check_assignable(&self, target: ExprId) -> Result<(), Error> {
         if matches!(
             self.builder.kind_of(target),
             ExprKind::Name(_) | ExprKind::Index { .. }
@@ -315,12 +315,12 @@ impl<'a> Parser<'a> {
             return Ok(());
         }
 
-        Err(self.syntax(SyntaxErrorKind::SyntaxError))
+        Err(self.syntax(ErrorKind::SyntaxError))
     }
 
     /// `globalstat -> 'global' ('function' NAME funcbody
     ///                          | attrib ('*' | NAME attrib { ',' NAME attrib } ['=' explist]))`
-    fn global_stat(&mut self) -> Result<StatKind<'a>, SyntaxError> {
+    fn global_stat(&mut self) -> Result<StatKind<'a>, Error> {
         self.advance()?;
 
         if matches!(self.current.kind, TokenKind::Function) {
@@ -369,7 +369,7 @@ impl<'a> Parser<'a> {
     }
 
     /// `global` is an ordinary name until the token after it says otherwise.
-    fn at_global_declaration(&mut self) -> Result<bool, SyntaxError> {
+    fn at_global_declaration(&mut self) -> Result<bool, Error> {
         if !matches!(self.current_name(), Some(b"global")) {
             return Ok(false);
         }
@@ -383,7 +383,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    fn var_name(&mut self, default: Option<Attribute>) -> Result<VarName<'a>, SyntaxError> {
+    fn var_name(&mut self, default: Option<Attribute>) -> Result<VarName<'a>, Error> {
         let start = self.current.span.start;
         let name = self.name()?;
         let attribute = self.attribute(default)?;
@@ -396,7 +396,7 @@ impl<'a> Parser<'a> {
     }
 
     /// `attrib -> ['<' NAME '>']`.
-    fn attribute(&mut self, default: Option<Attribute>) -> Result<Option<Attribute>, SyntaxError> {
+    fn attribute(&mut self, default: Option<Attribute>) -> Result<Option<Attribute>, Error> {
         if !self.eat_byte(b'<')? {
             return Ok(default);
         }
@@ -407,19 +407,16 @@ impl<'a> Parser<'a> {
         match name {
             b"const" => Ok(Some(Attribute::Const)),
             b"close" => Ok(Some(Attribute::Close)),
-            _ => Err(self.semantic(SyntaxErrorKind::UnknownAttribute(name.into()))),
+            _ => Err(self.semantic(ErrorKind::UnknownAttribute(name.into()))),
         }
     }
 
     /// The same, except that a global can never be to-be-closed.
-    fn global_attribute(
-        &mut self,
-        default: Option<Attribute>,
-    ) -> Result<Option<Attribute>, SyntaxError> {
+    fn global_attribute(&mut self, default: Option<Attribute>) -> Result<Option<Attribute>, Error> {
         let attribute = self.attribute(default)?;
 
         if attribute == Some(Attribute::Close) {
-            return Err(self.semantic(SyntaxErrorKind::GlobalToBeClosed));
+            return Err(self.semantic(ErrorKind::GlobalToBeClosed));
         }
 
         Ok(attribute)

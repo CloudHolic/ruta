@@ -5,7 +5,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::process::ExitCode;
 
-use ruta_syntax::error::SyntaxError;
+use ruta_syntax::error::Error;
 use ruta_syntax::line_index::LineIndex;
 use ruta_syntax::parser::parse_chunk;
 
@@ -38,7 +38,7 @@ fn parse_only(progname: &str, path: &str) -> ExitCode {
     };
 
     if let Err(error) = parse_chunk(&source) {
-        report_syntax_error(progname, path, &error, &source);
+        report_error(progname, path, &error, &source);
         return ExitCode::FAILURE;
     }
 
@@ -55,7 +55,7 @@ fn report(line: &[u8]) {
     let _ = io::stderr().write_all(&out);
 }
 
-fn report_syntax_error(progname: &str, path: &str, error: &SyntaxError, source: &[u8]) {
+fn report_error(progname: &str, path: &str, error: &Error, source: &[u8]) {
     let lines = LineIndex::new(source);
     let mut line = format!("{progname}: {path}:{}: ", error.line(&lines)).into_bytes();
     line.extend_from_slice(&error.message(&lines));

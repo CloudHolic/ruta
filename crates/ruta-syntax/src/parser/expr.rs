@@ -1,7 +1,7 @@
 //! Expressions, and the priority ladder that shapes them.
 
 use crate::ast::{BinOp, ExprId, ExprKind, Field, UnOp};
-use crate::error::{SyntaxError, SyntaxErrorKind};
+use crate::error::{Error, ErrorKind};
 use crate::token::TokenKind;
 
 use super::Parser;
@@ -10,12 +10,12 @@ use super::Parser;
 const UNARY_PRIORITY: u8 = 12;
 
 impl<'a> Parser<'a> {
-    pub(super) fn expr(&mut self) -> Result<ExprId, SyntaxError> {
+    pub(super) fn expr(&mut self) -> Result<ExprId, Error> {
         self.subexpr(0)
     }
 
     /// `explist -> expr { ',' expr }`
-    pub(super) fn expr_list(&mut self) -> Result<Vec<ExprId>, SyntaxError> {
+    pub(super) fn expr_list(&mut self) -> Result<Vec<ExprId>, Error> {
         let mut list = vec![self.expr()?];
 
         while self.eat_byte(b',')? {
@@ -26,7 +26,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Takes operators binidng tighter than `limit`.
-    fn subexpr(&mut self, limit: u8) -> Result<ExprId, SyntaxError> {
+    fn subexpr(&mut self, limit: u8) -> Result<ExprId, Error> {
         let start = self.current.span.start;
 
         let mut left = match unary_op(&self.current.kind) {
@@ -55,7 +55,7 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
-    fn simple_expr(&mut self) -> Result<ExprId, SyntaxError> {
+    fn simple_expr(&mut self) -> Result<ExprId, Error> {
         let start = self.current.span.start;
 
         let kind = match &self.current.kind {
@@ -67,7 +67,7 @@ impl<'a> Parser<'a> {
             TokenKind::Str(bytes) => ExprKind::Str(bytes.clone()),
             TokenKind::Dots => {
                 if !self.varargs {
-                    return Err(self.syntax(SyntaxErrorKind::VarargsOutsideVarargFunction));
+                    return Err(self.syntax(ErrorKind::VarargsOutsideVarargFunction));
                 }
 
                 ExprKind::Vararg
@@ -82,7 +82,7 @@ impl<'a> Parser<'a> {
     }
 
     /// `primaryexp -> NAME | '(' expr ')'`
-    fn primary_expr(&mut self) -> Result<ExprId, SyntaxError> {
+    fn primary_expr(&mut self) -> Result<ExprId, Error> {
         let start = self.current.span.start;
 
         if let Some(name) = self.current_name() {
@@ -103,11 +103,11 @@ impl<'a> Parser<'a> {
                 .expr(ExprKind::Paren(inner), self.span_from(start)));
         }
 
-        Err(self.syntax(SyntaxErrorKind::UnexpectedSymbol))
+        Err(self.syntax(ErrorKind::UnexpectedSymbol))
     }
 
     /// `suffixedexp -> primaryexp { '.' NAME | '[' expr ']' | ':' NAME args | args }`
-    pub(super) fn suffixed_expr(&mut self) -> Result<ExprId, SyntaxError> {
+    pub(super) fn suffixed_expr(&mut self) -> Result<ExprId, Error> {
         let start = self.current.span.start;
         let mut left = self.primary_expr()?;
 
@@ -153,7 +153,7 @@ impl<'a> Parser<'a> {
     }
 
     /// `args -> '(' [explist] ')' | tablector | STRING`
-    fn args(&mut self) -> Result<Box<[ExprId]>, SyntaxError> {
+    fn args(&mut self) -> Result<Box<[ExprId]>, Error> {
         if self.at_byte(b'(') {
             let open_at = self.current.span.start;
             self.advance()?;
@@ -175,7 +175,7 @@ impl<'a> Parser<'a> {
 
         let literal = match &self.current.kind {
             TokenKind::Str(bytes) => bytes.clone(),
-            _ => return Err(self.syntax(SyntaxErrorKind::FunctionArgumentsExpected)),
+            _ => return Err(self.syntax(ErrorKind::FunctionArgumentsExpected)),
         };
         let span = self.current.span;
         self.advance()?;
@@ -184,7 +184,7 @@ impl<'a> Parser<'a> {
     }
 
     /// `tablector -> '{' [field { sep field } [sep]] '}' where `sep` is `,` or `;`
-    fn table(&mut self) -> Result<ExprId, SyntaxError> {
+    fn table(&mut self) -> Result<ExprId, Error> {
         let start = self.current.span.start;
         self.advance()?;
 
@@ -205,7 +205,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    fn field(&mut self) -> Result<Field<'a>, SyntaxError> {
+    fn field(&mut self) -> Result<Field<'a>, Error> {
         if self.eat_byte(b'[')? {
             let key = self.expr()?;
             self.expect(TokenKind::Byte(b']'))?;
@@ -234,7 +234,7 @@ impl<'a> Parser<'a> {
     }
 
     /// The name after `.` or in `function a.b`, as the string key it stands for.
-    pub(super) fn name_as_string(&mut self) -> Result<ExprId, SyntaxError> {
+    pub(super) fn name_as_string(&mut self) -> Result<ExprId, Error> {
         let span = self.current.span;
         let name = self.name()?;
 

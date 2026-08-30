@@ -2,16 +2,23 @@
 
 use crate::line_index::LineIndex;
 
+/// What the compiler refuses a chunk for: the lexical and syntactic rules, and the semantic
+/// ones the parser decides. The reference reports all of them with one status, so they share
+/// one type here.
+///
+/// It deliberately does not implement `std::error::Error`. Rendering a message needs the
+/// source's line index - `unfinished long string (starting at line 3)` carries a line number
+/// inside its own text - and `Display` has nowhere to take one.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SyntaxError {
-    pub kind: SyntaxErrorKind,
+pub struct Error {
+    pub kind: ErrorKind,
     /// Byte offset the error is reported at.
     pub at: u32,
     pub near: Near,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SyntaxErrorKind {
+pub enum ErrorKind {
     MalformedNumber,
     UnfinishedString,
     HexadecimalDigitExpected,
@@ -54,7 +61,7 @@ pub enum Near {
     None,
 }
 
-impl SyntaxError {
+impl Error {
     pub fn line(&self, lines: &LineIndex) -> u32 {
         lines.line_of(self.at)
     }
@@ -77,33 +84,31 @@ impl SyntaxError {
 
     fn text(&self, lines: &LineIndex) -> String {
         match &self.kind {
-            SyntaxErrorKind::MalformedNumber => "malformed number".to_owned(),
-            SyntaxErrorKind::UnfinishedString => "unfinished string".to_owned(),
-            SyntaxErrorKind::HexadecimalDigitExpected => "hexadecimal digit expected".to_owned(),
-            SyntaxErrorKind::MissingOpenBrace => "missing '{'".to_owned(),
-            SyntaxErrorKind::Utf8ValueTooLarge => "UTF-8 value too large".to_owned(),
-            SyntaxErrorKind::MissingCloseBrace => "missing '}'".to_owned(),
-            SyntaxErrorKind::DecimalEscapeTooLarge => "decimal escape too large".to_owned(),
-            SyntaxErrorKind::InvalidEscapeSequence => "invalid escape sequence".to_owned(),
-            SyntaxErrorKind::InvalidLongStringDelimiter => {
-                "invalid long string delimiter".to_owned()
-            }
-            SyntaxErrorKind::UnfinishedLongString { open_at } => format!(
+            ErrorKind::MalformedNumber => "malformed number".to_owned(),
+            ErrorKind::UnfinishedString => "unfinished string".to_owned(),
+            ErrorKind::HexadecimalDigitExpected => "hexadecimal digit expected".to_owned(),
+            ErrorKind::MissingOpenBrace => "missing '{'".to_owned(),
+            ErrorKind::Utf8ValueTooLarge => "UTF-8 value too large".to_owned(),
+            ErrorKind::MissingCloseBrace => "missing '}'".to_owned(),
+            ErrorKind::DecimalEscapeTooLarge => "decimal escape too large".to_owned(),
+            ErrorKind::InvalidEscapeSequence => "invalid escape sequence".to_owned(),
+            ErrorKind::InvalidLongStringDelimiter => "invalid long string delimiter".to_owned(),
+            ErrorKind::UnfinishedLongString { open_at } => format!(
                 "unfinished long string (starting at line {})",
                 lines.line_of(*open_at)
             ),
-            SyntaxErrorKind::UnfinishedLongComment { open_at } => format!(
+            ErrorKind::UnfinishedLongComment { open_at } => format!(
                 "unfinished long comment (starting at line {})",
                 lines.line_of(*open_at)
             ),
-            SyntaxErrorKind::UnknownAttribute(name) => {
+            ErrorKind::UnknownAttribute(name) => {
                 format!("unknown attribute '{}'", String::from_utf8_lossy(name))
             }
-            SyntaxErrorKind::MultipleToBeClosed => {
+            ErrorKind::MultipleToBeClosed => {
                 "multiple to-be-closed variables in local list".to_owned()
             }
-            SyntaxErrorKind::Expected(text) => format!("{text} expected"),
-            SyntaxErrorKind::ExpectedToClose {
+            ErrorKind::Expected(text) => format!("{text} expected"),
+            ErrorKind::ExpectedToClose {
                 expected,
                 open,
                 open_at,
@@ -116,18 +121,16 @@ impl SyntaxError {
                     format!("{expected} expected (to close {open} at line {open_line})")
                 }
             }
-            SyntaxErrorKind::EqualsOrInExpected => "'=' or 'in' expected".to_owned(),
-            SyntaxErrorKind::NameOrDotsExpected => "<name> or '...' expected".to_owned(),
-            SyntaxErrorKind::FunctionArgumentsExpected => "function arguments expected".to_owned(),
-            SyntaxErrorKind::UnexpectedSymbol => "unexpected symbol".to_owned(),
-            SyntaxErrorKind::VarargsOutsideVarargFunction => {
+            ErrorKind::EqualsOrInExpected => "'=' or 'in' expected".to_owned(),
+            ErrorKind::NameOrDotsExpected => "<name> or '...' expected".to_owned(),
+            ErrorKind::FunctionArgumentsExpected => "function arguments expected".to_owned(),
+            ErrorKind::UnexpectedSymbol => "unexpected symbol".to_owned(),
+            ErrorKind::VarargsOutsideVarargFunction => {
                 "cannot use '...' outside a vararg function".to_owned()
             }
-            SyntaxErrorKind::SyntaxError => "syntax error".to_owned(),
-            SyntaxErrorKind::BreakOutsideLoop => "break outside loop".to_owned(),
-            SyntaxErrorKind::GlobalToBeClosed => {
-                "global variables cannot be to-be-closed".to_owned()
-            }
+            ErrorKind::SyntaxError => "syntax error".to_owned(),
+            ErrorKind::BreakOutsideLoop => "break outside loop".to_owned(),
+            ErrorKind::GlobalToBeClosed => "global variables cannot be to-be-closed".to_owned(),
         }
     }
 }

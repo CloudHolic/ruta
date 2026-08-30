@@ -3,7 +3,7 @@
 use std::mem;
 
 use crate::ast::{ExprId, ExprKind, Func, FuncId, StatKind, Vararg};
-use crate::error::{SyntaxError, SyntaxErrorKind};
+use crate::error::{Error, ErrorKind};
 use crate::token::TokenKind;
 
 use super::Parser;
@@ -11,7 +11,7 @@ use super::Parser;
 impl<'a> Parser<'a> {
     /// `funcstat -> 'function' funcname funcbody`
     /// `funcname -> NAME { '.' NAME } [':' NAME]`
-    pub(super) fn func_stat(&mut self) -> Result<StatKind<'a>, SyntaxError> {
+    pub(super) fn func_stat(&mut self) -> Result<StatKind<'a>, Error> {
         let start = self.current.span.start;
         self.advance()?;
 
@@ -53,7 +53,7 @@ impl<'a> Parser<'a> {
     }
 
     /// The `function() ... end` that appears where a value is expected.
-    pub(super) fn func_expr(&mut self, start: u32) -> Result<ExprId, SyntaxError> {
+    pub(super) fn func_expr(&mut self, start: u32) -> Result<ExprId, Error> {
         self.advance()?;
         let func = self.func_body(start, false)?;
 
@@ -63,7 +63,7 @@ impl<'a> Parser<'a> {
     }
 
     /// `funcbody -> '(' [parlist] ')' block 'end'`, with `start` at the `function` keyword.
-    pub(super) fn func_body(&mut self, start: u32, is_method: bool) -> Result<FuncId, SyntaxError> {
+    pub(super) fn func_body(&mut self, start: u32, is_method: bool) -> Result<FuncId, Error> {
         self.expect(TokenKind::Byte(b'('))?;
 
         let mut params = Vec::new();
@@ -84,7 +84,7 @@ impl<'a> Parser<'a> {
                 }
 
                 if self.current_name().is_none() {
-                    return Err(self.syntax(SyntaxErrorKind::NameOrDotsExpected));
+                    return Err(self.syntax(ErrorKind::NameOrDotsExpected));
                 }
 
                 params.push(self.name()?);

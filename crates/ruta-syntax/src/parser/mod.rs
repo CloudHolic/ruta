@@ -5,12 +5,12 @@ mod func;
 mod stat;
 
 use crate::ast::{Ast, Builder};
-use crate::error::{Near, SyntaxError, SyntaxErrorKind};
+use crate::error::{Error, ErrorKind, Near};
 use crate::lexer::Lexer;
 use crate::token::{Span, Token, TokenKind};
 
 /// Reads one chunk.
-pub fn parse_chunk(source: &[u8]) -> Result<Ast<'_>, SyntaxError> {
+pub fn parse_chunk(source: &[u8]) -> Result<Ast<'_>, Error> {
     let mut parser = Parser::new(source)?;
     let main = parser.chunk()?;
 
@@ -34,7 +34,7 @@ struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    fn new(source: &'a [u8]) -> Result<Self, SyntaxError> {
+    fn new(source: &'a [u8]) -> Result<Self, Error> {
         let mut lexer = Lexer::new(source);
         let current = lexer.next_token()?;
 
@@ -50,7 +50,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn advance(&mut self) -> Result<(), SyntaxError> {
+    fn advance(&mut self) -> Result<(), Error> {
         self.last_end = self.current.span.end;
         self.current = match self.ahead.take() {
             Some(token) => token,
@@ -61,7 +61,7 @@ impl<'a> Parser<'a> {
     }
 
     /// The token after `current`.
-    fn peek(&mut self) -> Result<&Token<'a>, SyntaxError> {
+    fn peek(&mut self) -> Result<&Token<'a>, Error> {
         if self.ahead.is_none() {
             self.ahead = Some(self.lexer.next_token()?);
         }
@@ -73,7 +73,7 @@ impl<'a> Parser<'a> {
         self.current.kind == TokenKind::Byte(byte)
     }
 
-    fn eat_byte(&mut self, byte: u8) -> Result<bool, SyntaxError> {
+    fn eat_byte(&mut self, byte: u8) -> Result<bool, Error> {
         if !self.at_byte(byte) {
             return Ok(false);
         }
@@ -83,7 +83,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Consumes a keyword or a multi-byte symbol when that is what is next.
-    fn eat(&mut self, kind: TokenKind<'static>) -> Result<bool, SyntaxError> {
+    fn eat(&mut self, kind: TokenKind<'static>) -> Result<bool, Error> {
         if self.current.kind != kind {
             return Ok(false);
         }
@@ -93,12 +93,12 @@ impl<'a> Parser<'a> {
     }
 
     /// The same, for a token the grammar leaves no choice about.
-    fn expect(&mut self, kind: TokenKind<'static>) -> Result<(), SyntaxError> {
+    fn expect(&mut self, kind: TokenKind<'static>) -> Result<(), Error> {
         if self.current.kind == kind {
             return self.advance();
         }
 
-        Err(self.syntax(SyntaxErrorKind::Expected(kind.describe().into())))
+        Err(self.syntax(ErrorKind::Expected(kind.describe().into())))
     }
 
     /// The same, for a token that closes one opened earlier.
@@ -107,22 +107,22 @@ impl<'a> Parser<'a> {
         kind: TokenKind<'static>,
         open: TokenKind<'static>,
         open_at: u32,
-    ) -> Result<(), SyntaxError> {
+    ) -> Result<(), Error> {
         if self.current.kind == kind {
             return self.advance();
         }
 
-        Err(self.syntax(SyntaxErrorKind::ExpectedToClose {
+        Err(self.syntax(ErrorKind::ExpectedToClose {
             expected: kind.describe().into(),
             open: open.describe().into(),
             open_at,
         }))
     }
 
-    fn name(&mut self) -> Result<&'a [u8], SyntaxError> {
+    fn name(&mut self) -> Result<&'a [u8], Error> {
         let Some(name) = self.current_name() else {
             let expected = TokenKind::Name(b"").describe();
-            return Err(self.syntax(SyntaxErrorKind::Expected(expected.into())));
+            return Err(self.syntax(ErrorKind::Expected(expected.into())));
         };
         self.advance()?;
 
@@ -142,8 +142,8 @@ impl<'a> Parser<'a> {
     }
 
     /// A syntax error.
-    fn syntax(&self, kind: SyntaxErrorKind) -> SyntaxError {
-        SyntaxError {
+    fn syntax(&self, kind: ErrorKind) -> Error {
+        Error {
             kind,
             at: self.current.span.end,
             near: self.near(),
@@ -152,8 +152,8 @@ impl<'a> Parser<'a> {
 
     /// A semantic error: no `near` clause, and the line is the one hte last consumed token
     /// ended on rather than the line the parser has reached.
-    fn semantic(&self, kind: SyntaxErrorKind) -> SyntaxError {
-        SyntaxError {
+    fn semantic(&self, kind: ErrorKind) -> Error {
+        Error {
             kind,
             at: self.last_end,
             near: Near::None,

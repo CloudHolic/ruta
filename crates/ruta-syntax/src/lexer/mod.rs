@@ -6,7 +6,7 @@ mod number;
 mod scan;
 mod string;
 
-use crate::error::{Near, SyntaxError, SyntaxErrorKind};
+use crate::error::{Error, ErrorKind, Near};
 use crate::token::{Span, Token, TokenKind};
 
 #[derive(Debug)]
@@ -63,16 +63,16 @@ impl<'a> Lexer<'a> {
         self.pos += 1;
     }
 
-    fn eof_error(&self, kind: SyntaxErrorKind) -> SyntaxError {
-        SyntaxError {
+    fn eof_error(&self, kind: ErrorKind) -> Error {
+        Error {
             kind,
             at: self.pos as u32,
             near: Near::Eof,
         }
     }
 
-    fn buffered(&self, kind: SyntaxErrorKind) -> SyntaxError {
-        SyntaxError {
+    fn buffered(&self, kind: ErrorKind) -> Error {
+        Error {
             kind,
             at: self.pos as u32,
             near: Near::Buffer(self.buf.clone()),
@@ -80,13 +80,13 @@ impl<'a> Lexer<'a> {
     }
 
     /// The offending byte joins the buffer so that `near` shows it.
-    fn escape_error(&mut self, kind: SyntaxErrorKind) -> SyntaxError {
+    fn escape_error(&mut self, kind: ErrorKind) -> Error {
         let at = self.pos as u32;
         if self.peek().is_some() {
             self.save_and_next();
         }
 
-        SyntaxError {
+        Error {
             kind,
             at,
             near: Near::Buffer(self.buf.clone()),
@@ -94,9 +94,9 @@ impl<'a> Lexer<'a> {
     }
 
     /// `[=` with no second bracket.
-    fn delimiter_error(&self, start: usize) -> SyntaxError {
-        SyntaxError {
-            kind: SyntaxErrorKind::InvalidLongStringDelimiter,
+    fn delimiter_error(&self, start: usize) -> Error {
+        Error {
+            kind: ErrorKind::InvalidLongStringDelimiter,
             at: self.pos as u32,
             near: Near::Buffer(self.source[start..self.pos].to_vec()),
         }

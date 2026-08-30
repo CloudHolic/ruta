@@ -1,6 +1,6 @@
 //! Short strings and their escapes.
 
-use crate::error::{SyntaxError, SyntaxErrorKind};
+use crate::error::{Error, ErrorKind};
 use crate::token::{Token, TokenKind};
 
 use super::Lexer;
@@ -9,19 +9,15 @@ use super::bytes::hex_value;
 impl<'a> Lexer<'a> {
     /// The buffer doubles as the string's value and as the text `near` shows on error, so an
     /// escape is decoded in place: `"\65\q"` reports `near '"A\q'`, note `near '"\65\q'`.
-    pub(super) fn read_string(
-        &mut self,
-        delimiter: u8,
-        start: usize,
-    ) -> Result<Token<'a>, SyntaxError> {
+    pub(super) fn read_string(&mut self, delimiter: u8, start: usize) -> Result<Token<'a>, Error> {
         self.buf.clear();
         self.save_and_next(); // keep the delimiter, for error messages
 
         loop {
             match self.peek() {
                 Some(byte) if byte == delimiter => break,
-                None => return Err(self.eof_error(SyntaxErrorKind::UnfinishedString)),
-                Some(b'\n' | b'\r') => return Err(self.buffered(SyntaxErrorKind::UnfinishedString)),
+                None => return Err(self.eof_error(ErrorKind::UnfinishedString)),
+                Some(b'\n' | b'\r') => return Err(self.buffered(ErrorKind::UnfinishedString)),
                 Some(b'\\') => self.read_escape()?,
                 Some(_) => self.save_and_next(),
             }
@@ -34,7 +30,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// What on `\...` sequence stands for. The `\` is already in the buffer.
-    fn read_escape(&mut self) -> Result<(), SyntaxError> {
+    fn read_escape(&mut self) -> Result<(), Error> {
         self.save_and_next(); // keep the `\`, for error messages
 
         match self.peek() {
@@ -80,7 +76,7 @@ impl<'a> Lexer<'a> {
                     self.pos += 1;
                     self.put_decoded(decoded);
                 }
-                None => return Err(self.escape_error(SyntaxErrorKind::InvalidEscapeSequence)),
+                None => return Err(self.escape_error(ErrorKind::InvalidEscapeSequence)),
             },
         }
 
@@ -93,17 +89,17 @@ impl<'a> Lexer<'a> {
         self.buf.push(byte);
     }
 
-    fn hex_digit(&mut self) -> Result<u32, SyntaxError> {
+    fn hex_digit(&mut self) -> Result<u32, Error> {
         self.save_and_next();
 
         match self.peek() {
             Some(byte) if byte.is_ascii_hexdigit() => Ok(hex_value(byte)),
-            _ => Err(self.escape_error(SyntaxErrorKind::HexadecimalDigitExpected)),
+            _ => Err(self.escape_error(ErrorKind::HexadecimalDigitExpected)),
         }
     }
 
     /// `\xNN`. Both digits sit in the buffer while they are read, so a bad one shows up in `near`.
-    fn read_hex_escape(&mut self) -> Result<u8, SyntaxError> {
+    fn read_hex_escape(&mut self) -> Result<u8, Error> {
         let value = (self.hex_digit()? << 4) + self.hex_digit()?;
 
         self.pos += 1;
@@ -112,12 +108,12 @@ impl<'a> Lexer<'a> {
         Ok(value as u8)
     }
 
-    fn read_utf8_escape(&mut self) -> Result<u32, SyntaxError> {
+    fn read_utf8_escape(&mut self) -> Result<u32, Error> {
         let mut saved = 4; // '\', 'u', '{' and the first digit
         self.save_and_next(); // skip 'u'
 
         if self.peek() != Some(b'{') {
-            return Err(self.escape_error(SyntaxErrorKind::MissingOpenBrace));
+            return Err(self.escape_error(ErrorKind::MissingOpenBrace));
         }
 
         let mut value = self.hex_digit()?;
@@ -129,14 +125,14 @@ impl<'a> Lexer<'a> {
 
             saved += 1;
             if value > 0x7fff_ffff >> 4 {
-                return Err(self.escape_error(SyntaxErrorKind::Utf8ValueTooLarge));
+                return Err(self.escape_error(ErrorKind::Utf8ValueTooLarge));
             }
 
             value = (value << 4) + hex_value(digit);
         }
 
         if self.peek() != Some(b'}') {
-            return Err(self.escape_error(SyntaxErrorKind::MissingCloseBrace));
+            return Err(self.escape_error(ErrorKind::MissingCloseBrace));
         }
 
         self.pos += 1; // skip '}'
@@ -145,7 +141,7 @@ impl<'a> Lexer<'a> {
         Ok(value)
     }
 
-    fn read_decimal_escape(&mut self) -> Result<u8, SyntaxError> {
+    fn read_decimal_escape(&mut self) -> Result<u8, Error> {
         let mut value = 0;
         let mut digits = 0;
 
@@ -160,7 +156,7 @@ impl<'a> Lexer<'a> {
         }
 
         if value > 255 {
-            return Err(self.escape_error(SyntaxErrorKind::DecimalEscapeTooLarge));
+            return Err(self.escape_error(ErrorKind::DecimalEscapeTooLarge));
         }
 
         self.buf.truncate(self.buf.len() - digits);
