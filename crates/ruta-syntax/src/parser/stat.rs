@@ -36,7 +36,9 @@ impl<'a> Parser<'a> {
         }
 
         let span = self.span_from(start);
-        Ok(self.builder.block(stats.into_boxed_slice(), span))
+        Ok(self
+            .builder
+            .block(stats.into_boxed_slice(), span, self.last_end))
     }
 
     /// A loop body.
@@ -96,10 +98,10 @@ impl<'a> Parser<'a> {
                     let body = self.loop_block()?;
                     self.expect_match(TokenKind::Until, TokenKind::Repeat, start)?;
 
-                    StatKind::Repeat {
-                        body,
-                        condition: self.expr()?,
-                    }
+                    let condition = self.expr()?;
+                    self.builder.set_block_close(body, self.last_end);
+
+                    StatKind::Repeat { body, condition }
                 }
                 TokenKind::Local => self.local_stat()?,
                 TokenKind::DbColon => {

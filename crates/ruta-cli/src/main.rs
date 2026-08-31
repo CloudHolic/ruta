@@ -8,6 +8,7 @@ use std::process::ExitCode;
 use ruta_syntax::error::Error;
 use ruta_syntax::line_index::LineIndex;
 use ruta_syntax::parser::parse_chunk;
+use ruta_syntax::scope::resolve;
 
 #[cfg(windows)]
 const LINE_END: &[u8] = b"\r\n";
@@ -37,7 +38,7 @@ fn parse_only(progname: &str, path: &str) -> ExitCode {
         }
     };
 
-    if let Err(error) = parse_chunk(&source) {
+    if let Err(error) = parse_chunk(&source).and_then(|ast| resolve(&ast)) {
         report_error(progname, path, &error, &source);
         return ExitCode::FAILURE;
     }

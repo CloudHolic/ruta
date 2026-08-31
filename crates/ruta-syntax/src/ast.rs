@@ -62,6 +62,7 @@ pub struct Stat<'a> {
 pub struct Block {
     pub stats: Box<[StatId]>,
     pub span: Span,
+    pub close_at: u32,
 }
 
 #[derive(Debug)]
@@ -182,6 +183,7 @@ pub struct Func<'a> {
     pub vararg: Option<Vararg<'a>>,
     pub is_method: bool,
     pub body: BlockId,
+    /// Ends at the `end` that closes the body.
     pub span: Span,
 }
 
@@ -260,9 +262,17 @@ impl<'a> Builder<'a> {
         StatId(self.stats.len() as u32 - 1)
     }
 
-    pub(crate) fn block(&mut self, stats: Box<[StatId]>, span: Span) -> BlockId {
-        self.blocks.push(Block { stats, span });
+    pub(crate) fn block(&mut self, stats: Box<[StatId]>, span: Span, close_at: u32) -> BlockId {
+        self.blocks.push(Block {
+            stats,
+            span,
+            close_at,
+        });
         BlockId(self.blocks.len() as u32 - 1)
+    }
+
+    pub(crate) fn set_block_close(&mut self, id: BlockId, close_at: u32) {
+        self.blocks[id.0 as usize].close_at = close_at;
     }
 
     pub(crate) fn func(&mut self, func: Func<'a>) -> FuncId {
