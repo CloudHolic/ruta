@@ -1,10 +1,12 @@
 //! Name resolution, and the assignments it refuses.
 
 mod expr;
+mod label;
 mod stat;
 
 use crate::ast::Ast;
 use crate::error::{Error, ErrorKind, Near};
+use label::BlockFrame;
 
 /// Walks a parsed chunk, refusing the first name it cannot justify.
 pub fn resolve(ast: &Ast<'_>) -> Result<(), Error> {
@@ -15,15 +17,25 @@ pub fn resolve(ast: &Ast<'_>) -> Result<(), Error> {
             is_global: false,
             readonly: false,
         }],
+        blocks: Vec::new(),
+        functions: Vec::new(),
     };
 
-    resolver.stats(ast.main_block())
+    let main = ast.main_block();
+
+    // The chunk is a function, which is why a goto at its top level is refused at its end.
+    resolver.enter_function();
+    resolver.stats(main, true)?;
+    resolver.leave_function(main.close_at)
 }
 
 #[derive(Debug)]
 struct Resolver<'a, 'src> {
     ast: &'a Ast<'src>,
     declarations: Vec<Declaration<'src>>,
+    blocks: Vec<BlockFrame<'src>>,
+    /// Where each function's block start.
+    functions: Vec<usize>,
 }
 
 #[derive(Debug)]

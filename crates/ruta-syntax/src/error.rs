@@ -54,6 +54,21 @@ pub enum ErrorKind {
     ConstAssignment(Box<[u8]>),
     VariableNotDeclared(Box<[u8]>),
     EnvIsGlobal(Box<[u8]>),
+    LabelAlreadyDefined {
+        name: Box<[u8]>,
+        /// The label that claimed the name, which the message names by line.
+        first_at: u32,
+    },
+    NoVisibleLabel {
+        name: Box<[u8]>,
+        goto_at: u32,
+    },
+    JumpIntoScope {
+        label: Box<[u8]>,
+        goto_at: u32,
+        /// The declaration the jump would skip.
+        variable: Box<[u8]>,
+    },
 }
 
 /// What the `near` clause of a message shows.
@@ -144,6 +159,26 @@ impl Error {
             ErrorKind::EnvIsGlobal(name) => format!(
                 "_ENV is global when accessing variable '{}'",
                 String::from_utf8_lossy(name)
+            ),
+            ErrorKind::LabelAlreadyDefined { name, first_at } => format!(
+                "label '{}' already defined on line {}",
+                String::from_utf8_lossy(name),
+                lines.line_of(*first_at)
+            ),
+            ErrorKind::NoVisibleLabel { name, goto_at } => format!(
+                "no visible label '{}' for <goto> at line {}",
+                String::from_utf8_lossy(name),
+                lines.line_of(*goto_at)
+            ),
+            ErrorKind::JumpIntoScope {
+                label,
+                goto_at,
+                variable,
+            } => format!(
+                "<goto {}> at line {} jumps into the scope of '{}'",
+                String::from_utf8_lossy(label),
+                lines.line_of(*goto_at),
+                String::from_utf8_lossy(variable)
             ),
         }
     }

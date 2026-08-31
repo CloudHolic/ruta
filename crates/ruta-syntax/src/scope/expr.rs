@@ -71,8 +71,10 @@ impl<'src> Resolver<'_, 'src> {
     }
 
     pub(super) fn func(&mut self, id: FuncId) -> Result<(), Error> {
-        let func = self.ast.func(id);
-        let height = self.declarations.len();
+        let ast = self.ast;
+        let func = ast.func(id);
+
+        self.enter_function();
 
         // A method's receiver is not in the parameter list.
         if func.is_method {
@@ -87,9 +89,7 @@ impl<'src> Resolver<'_, 'src> {
             self.declare_local(name, true);
         }
 
-        self.block(func.body)?;
-        self.declarations.truncate(height);
-
-        Ok(())
+        self.stats(ast.block(func.body), true)?;
+        self.leave_function(func.span.end)
     }
 }

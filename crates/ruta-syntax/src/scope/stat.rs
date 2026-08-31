@@ -1,15 +1,47 @@
-//! Statements, and the point at which each one's declarations become visibles.
+//! Statements, the point at which each one's declarations become visible, and where labels sit.
 
 use crate::ast::{Block, BlockId, StatId, StatKind};
 use crate::error::Error;
 
 use super::Resolver;
+use super::label::{Exit, Goto};
 
 impl<'src> Resolver<'_, 'src> {
     /// A block's statements without a scope of their own, so that `repeat` can hold its scope open past the last one.
-    pub(super) fn stats(&mut self, block: &Block) -> Result<(), Error> {
-        for &stat in block.stats.iter() {
-            self.stat(stat)?;
+    pub(super) fn stats(&mut self, block: &Block, tail_labels: bool) -> Result<(), Error> {
+        let ast = self.ast;
+        let stats = &block.stats;
+        let mut index = 0;
+
+        while index < stats.len() {
+            if !matches!(ast.stat(stats[index]).kind, StatKind::Label(_)) {
+                self.stat(stats[index])?;
+                index += 1;
+                continue;
+            }
+
+            // Labels written back to back are registered last one first, which is what decides
+            // the line a collision between them names.
+            let mut last = index;
+            while last + 1 < stats.len()
+                && matches!(ast.stat(stats[last + 1]).kind, StatKind::Label(_))
+            {
+                last += 1;
+            }
+
+            let report_at = ast.stat(stats[last]).span.end;
+            let tail = tail_labels && last + 1 == stats.len();
+
+            for &id in stats[index..=last].iter().rev() {
+                let stat = ast.stat(id);
+                let StatKind::Label(name) = stat.kind else {
+                    unreachable!("the run holds labels only")
+                };
+
+                self.declare_label(name, stat.span.start, report_at, tail)?;
+            }
+
+            index = last + 1;
         }
 
         Ok(())
@@ -17,12 +49,10 @@ impl<'src> Resolver<'_, 'src> {
 
     pub(super) fn block(&mut self, id: BlockId) -> Result<(), Error> {
         let body = self.ast.block(id);
-        let height = self.declarations.len();
 
-        self.stats(body)?;
-        self.declarations.truncate(height);
-
-        Ok(())
+        self.enter_block();
+        self.stats(body, true)?;
+        self.leave_block(body.close_at, Exit::Block)
     }
 
     fn stat(&mut self, id: StatId) -> Result<(), Error> {
@@ -82,11 +112,11 @@ impl<'src> Resolver<'_, 'src> {
             StatKind::Repeat { body, condition } => {
                 // The body's locals are visible in the condition, so its scope closes after it.
                 let body = ast.block(*body);
-                let height = self.declarations.len();
 
-                self.stats(body)?;
+                self.enter_block();
+                self.stats(body, false)?;
                 self.expr(*condition)?;
-                self.declarations.truncate(height);
+                self.leave_block(body.close_at, Exit::Block)?;
             }
             StatKind::NumericFor {
                 name,
@@ -101,18 +131,17 @@ impl<'src> Resolver<'_, 'src> {
                     self.expr(*step)?;
                 }
 
-                let height = self.declarations.len();
-
+                self.enter_block();
                 self.declare_local(name, true);
                 self.block(*body)?;
-                self.declarations.truncate(height);
+                self.leave_block(ast.block(*body).close_at, Exit::Block)?;
             }
             StatKind::GenericFor { names, exprs, body } => {
                 for &expr in exprs.iter() {
                     self.expr(expr)?;
                 }
 
-                let height = self.declarations.len();
+                self.enter_block();
 
                 for (index, &name) in names.iter().enumerate() {
                     // Only the control variable is read-only.
@@ -120,7 +149,7 @@ impl<'src> Resolver<'_, 'src> {
                 }
 
                 self.block(*body)?;
-                self.declarations.truncate(height);
+                self.leave_block(ast.block(*body).close_at, Exit::Block)?;
             }
             StatKind::If { arms, otherwise } => {
                 for (condition, body) in arms.iter() {
@@ -138,8 +167,21 @@ impl<'src> Resolver<'_, 'src> {
                     self.expr(value)?;
                 }
             }
-            // `break` names nothing.
-            StatKind::Break | StatKind::Goto(_) | StatKind::Label(_) => {}
+            StatKind::Goto(name) => {
+                let goto = Goto {
+                    name,
+                    at: ast.stat(id).span.start,
+                    declarations: self.declarations.len(),
+                };
+
+                self.blocks
+                    .last_mut()
+                    .expect("inside a block")
+                    .gotos
+                    .push(goto)
+            }
+            StatKind::Break => {}
+            StatKind::Label(_) => unreachable!("Labels are registered by stats()"),
         }
 
         Ok(())

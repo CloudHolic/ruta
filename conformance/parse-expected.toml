@@ -6,67 +6,12 @@
 # listed here and still failing is expected, an entry listed here that starts passing should
 # be removed, and a mismatch that is *not* listed here is a bug.
 #
-# 13 entries, against a corpus of 602. Recorded 2026-08-26 at the end of stage 1; the
-# entries for global declarations and read-only assignment came off when stage 2 resolved
-# names. What is left is label and goto scoping, and one code generation limit.
+# 1 entry, against a corpus of 602. Recorded 2026-08-26 at the end of stage 1; the entries
+# for global declarations and read-only assignment came off when stage 2 resolved names, and
+# the label and goto ones when it settled jumps. What is left is a code generation limit.
 #
 # `stage` is the stage that closes the gap. `error` is what the reference says, with the
 # chunk name and line elided.
-
-# --- Stage 2: label and goto scoping -----------------------------------------------
-#
-# A parser can build the goto and label nodes but cannot decide any of this. Visibility,
-# duplicate definition, and jumping into a local's scope are questions the resolver answers
-# when it leaves a block or a function, which is the piece of stage 2 that is still missing.
-
-[cases."errors/016.lua"]
-stage = 2
-error = "label 'A' already defined on line 1"
-
-[cases."errors/017.lua"]
-stage = 2
-error = "no visible label 'A' for <goto> at line 2"
-
-[cases."goto/001.lua"]
-stage = 2
-error = "no visible label 'l1' for <goto> at line 1"
-
-[cases."goto/002.lua"]
-stage = 2
-error = "no visible label 'l1' for <goto> at line 1"
-
-[cases."goto/003.lua"]
-stage = 2
-error = "label 'l1' already defined on line 1"
-
-[cases."goto/004.lua"]
-stage = 2
-error = "label 'l1' already defined on line 1"
-
-[cases."goto/005.lua"]
-stage = 2
-error = "<goto l1> at line 1 jumps into the scope of 'aa'"
-
-[cases."goto/006.lua"]
-stage = 2
-error = "<goto l2> at line 1 jumps into the scope of '*'"
-note = "The '*' is a global declaration, so this one needs the global rules as well as the label rules."
-
-[cases."goto/007.lua"]
-stage = 2
-error = "<goto l1> at line 1 jumps into the scope of 'aa'"
-
-[cases."goto/008.lua"]
-stage = 2
-error = "no visible label 'l1' for <goto> at line 1"
-
-[cases."goto/009.lua"]
-stage = 2
-error = "no visible label 'l1' for <goto> at line 1"
-
-[cases."goto/010.lua"]
-stage = 2
-error = "<goto cont> at line 2 jumps into the scope of 'xuxu'"
 
 # --- Stage 4: code generation limits -----------------------------------------------
 #
