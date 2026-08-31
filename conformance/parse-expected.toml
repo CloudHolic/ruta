@@ -6,7 +6,9 @@
 # listed here and still failing is expected, an entry listed here that starts passing should
 # be removed, and a mismatch that is *not* listed here is a bug.
 #
-# 26 entries, against a corpus of 602. Recorded 2026-08-26, at the end of stage 1.
+# 13 entries, against a corpus of 602. Recorded 2026-08-26 at the end of stage 1; the
+# entries for global declarations and read-only assignment came off when stage 2 resolved
+# names. What is left is label and goto scoping, and one code generation limit.
 #
 # `stage` is the stage that closes the gap. `error` is what the reference says, with the
 # chunk name and line elided.
@@ -14,8 +16,8 @@
 # --- Stage 2: label and goto scoping -----------------------------------------------
 #
 # A parser can build the goto and label nodes but cannot decide any of this. Visibility,
-# duplicate definition, and jumping into a local's scope are all questions about the shape
-# of the scope tree, which stage 2 is what builds.
+# duplicate definition, and jumping into a local's scope are questions the resolver answers
+# when it leaves a block or a function, which is the piece of stage 2 that is still missing.
 
 [cases."errors/016.lua"]
 stage = 2
@@ -65,72 +67,6 @@ error = "no visible label 'l1' for <goto> at line 1"
 [cases."goto/010.lua"]
 stage = 2
 error = "<goto cont> at line 2 jumps into the scope of 'xuxu'"
-
-# --- Stage 2: global declarations --------------------------------------------------
-#
-# Stage 1 parses `global` in all its forms; deciding whether a name was declared is a
-# resolution question. `_ENV is global` is the same rule seen from the other side.
-
-[cases."goto/012.lua"]
-stage = 2
-error = "variable 'X' not declared"
-
-[cases."goto/013.lua"]
-stage = 2
-error = "variable 'XX' not declared"
-
-[cases."goto/016.lua"]
-stage = 2
-error = "_ENV is global when accessing variable 'a'"
-
-[cases."goto/017.lua"]
-stage = 2
-error = "variable 'XXX' not declared"
-
-# --- Stage 2: assignment to read-only variables ------------------------------------
-#
-# Two different sources of read-only-ness land in the same message. `<const>` attributes
-# are attached by the parser but only mean something once assignment targets are resolved;
-# for-loop control variables are read-only by the 5.5 rule, and in a generic for that is
-# the first variable only.
-
-[cases."goto/019.lua"]
-stage = 2
-error = "attempt to assign to const variable 'foo'"
-
-[cases."goto/020.lua"]
-stage = 2
-error = "attempt to assign to const variable 'foo'"
-
-[cases."goto/021.lua"]
-stage = 2
-error = "attempt to assign to const variable 'Y'"
-
-[cases."goto/022.lua"]
-stage = 2
-error = "attempt to assign to const variable 'Y'"
-
-[cases."nextvar/001.lua"]
-stage = 2
-error = "attempt to assign to const variable 'i'"
-note = "A for-loop control variable, not a <const> local."
-
-[cases."nextvar/002.lua"]
-stage = 2
-error = "attempt to assign to const variable 'v'"
-note = "A for-loop control variable, not a <const> local."
-
-[cases."vararg/003.lua"]
-stage = 2
-error = "attempt to assign to const variable 't'"
-
-[cases."vararg/004.lua"]
-stage = 2
-error = "attempt to assign to const variable 'extra'"
-
-[cases."vararg/005.lua"]
-stage = 2
-error = "attempt to assign to const variable 'a'"
 
 # --- Stage 4: code generation limits -----------------------------------------------
 #
