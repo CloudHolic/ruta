@@ -20,6 +20,8 @@ impl<'a> Parser<'a> {
 
     /// `block -> { stat } [retstat]`
     pub(super) fn block(&mut self) -> Result<BlockId, Error> {
+        self.descend()?;
+
         let start = self.current.span.start;
         let mut stats = Vec::new();
 
@@ -34,6 +36,8 @@ impl<'a> Parser<'a> {
                 stats.push(stat);
             }
         }
+
+        self.ascend();
 
         let span = self.span_from(start);
         Ok(self

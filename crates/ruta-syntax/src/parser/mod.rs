@@ -9,6 +9,9 @@ use crate::error::{Error, ErrorKind, Near};
 use crate::lexer::Lexer;
 use crate::token::{Span, Token, TokenKind};
 
+/// How many nested `subexpr` and `block` entries the parser takes before it refuses the chunk.
+const MAX_DEPTH: u32 = 1000;
+
 /// Reads one chunk.
 pub fn parse_chunk(source: &[u8]) -> Result<Ast<'_>, Error> {
     let mut parser = Parser::new(source)?;
@@ -31,6 +34,8 @@ struct Parser<'a> {
     varargs: bool,
     /// Loops open in the function being parsed.
     loops: u32,
+    /// Nested `subexpr` and `block` entries.
+    depth: u32,
 }
 
 impl<'a> Parser<'a> {
@@ -47,6 +52,7 @@ impl<'a> Parser<'a> {
             last_end: 0,
             varargs: true,
             loops: 0,
+            depth: 0,
         })
     }
 
@@ -158,6 +164,22 @@ impl<'a> Parser<'a> {
             at: self.last_end,
             near: Near::None,
         }
+    }
+
+    /// Takes one level of recursion.
+    fn descend(&mut self) -> Result<(), Error> {
+        self.depth += 1;
+
+        if self.depth > MAX_DEPTH {
+            return Err(self.semantic(ErrorKind::StackOverflow));
+        }
+
+        Ok(())
+    }
+
+    /// Gives back a level taken by `descend`.
+    fn ascend(&mut self) {
+        self.depth -= 1;
     }
 
     fn near(&self) -> Near {

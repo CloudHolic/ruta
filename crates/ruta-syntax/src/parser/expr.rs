@@ -27,6 +27,8 @@ impl<'a> Parser<'a> {
 
     /// Takes operators binidng tighter than `limit`.
     fn subexpr(&mut self, limit: u8) -> Result<ExprId, Error> {
+        self.descend()?;
+
         let start = self.current.span.start;
 
         let mut left = match unary_op(&self.current.kind) {
@@ -52,6 +54,7 @@ impl<'a> Parser<'a> {
                 .expr(ExprKind::Binary { op, left, right }, self.span_from(start));
         }
 
+        self.ascend();
         Ok(left)
     }
 

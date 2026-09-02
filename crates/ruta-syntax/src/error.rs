@@ -51,6 +51,7 @@ pub enum ErrorKind {
     SyntaxError,
     BreakOutsideLoop,
     GlobalToBeClosed,
+    StackOverflow,
     ConstAssignment(Box<[u8]>),
     VariableNotDeclared(Box<[u8]>),
     EnvIsGlobal(Box<[u8]>),
@@ -149,6 +150,7 @@ impl Error {
             ErrorKind::SyntaxError => "syntax error".to_owned(),
             ErrorKind::BreakOutsideLoop => "break outside loop".to_owned(),
             ErrorKind::GlobalToBeClosed => "global variables cannot be to-be-closed".to_owned(),
+            ErrorKind::StackOverflow => "stack overflow".to_owned(),
             ErrorKind::ConstAssignment(name) => format!(
                 "attempt to assign to const variable '{}'",
                 String::from_utf8_lossy(name)

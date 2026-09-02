@@ -3,7 +3,9 @@
 use std::env;
 use std::fs;
 use std::io::{self, Write};
+use std::panic;
 use std::process::ExitCode;
+use std::thread;
 
 use ruta_syntax::error::Error;
 use ruta_syntax::line_index::LineIndex;
@@ -14,6 +16,8 @@ use ruta_syntax::scope::resolve;
 const LINE_END: &[u8] = b"\r\n";
 #[cfg(not(windows))]
 const LINE_END: &[u8] = b"\n";
+
+const PARSE_STACK: usize = 32 * 1024 * 1024;
 
 fn main() -> ExitCode {
     let mut args = env::args();
@@ -38,12 +42,27 @@ fn parse_only(progname: &str, path: &str) -> ExitCode {
         }
     };
 
-    if let Err(error) = parse_chunk(&source).and_then(|ast| resolve(&ast)) {
-        report_error(progname, path, &error, &source);
-        return ExitCode::FAILURE;
-    }
+    let outcome: io::Result<Result<(), Error>> = thread::scope(|scope| {
+        let worker = thread::Builder::new()
+            .stack_size(PARSE_STACK)
+            .spawn_scoped(scope, || parse_chunk(&source).and_then(|ast| resolve(&ast)))?;
 
-    ExitCode::SUCCESS
+        Ok(worker
+            .join()
+            .unwrap_or_else(|payload| panic::resume_unwind(payload)))
+    });
+
+    match outcome {
+        Ok(Ok(())) => ExitCode::SUCCESS,
+        Ok(Err(error)) => {
+            report_error(progname, path, &error, &source);
+            ExitCode::FAILURE
+        }
+        Err(error) => {
+            report(format!("{progname}: cannot start the parser thread: {error}").as_bytes());
+            ExitCode::FAILURE
+        }
+    }
 }
 
 /// Lua's own library writes through the C runtime, which on Windows turns `\n` into `\r\n`.
