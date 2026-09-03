@@ -6,7 +6,7 @@ use crate::ast::{ExprId, ExprKind, Func, FuncId, StatKind, Vararg};
 use crate::error::{Error, ErrorKind};
 use crate::token::TokenKind;
 
-use super::Parser;
+use super::chunk::Parser;
 
 impl<'a> Parser<'a> {
     /// `funcstat -> 'function' funcname funcbody`

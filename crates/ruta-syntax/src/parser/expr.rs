@@ -4,7 +4,7 @@ use crate::ast::{BinOp, ExprId, ExprKind, Field, UnOp};
 use crate::error::{Error, ErrorKind};
 use crate::token::TokenKind;
 
-use super::Parser;
+use super::chunk::Parser;
 
 /// Every unary operator binds at the same strength, tighter than any binary one but looser than `^`.
 const UNARY_PRIORITY: u8 = 12;
@@ -58,6 +58,62 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
+    /// `suffixedexp -> primaryexp { '.' NAME | '[' expr ']' | ':' NAME args | args }`
+    pub(super) fn suffixed_expr(&mut self) -> Result<ExprId, Error> {
+        let start = self.current.span.start;
+        let mut left = self.primary_expr()?;
+
+        loop {
+            left = match self.current.kind {
+                TokenKind::Byte(b'.') => {
+                    self.advance()?;
+                    let key = self.name_as_string()?;
+                    self.builder
+                        .expr(ExprKind::Index { object: left, key }, self.span_from(start))
+                }
+                TokenKind::Byte(b'[') => {
+                    self.advance()?;
+                    let key = self.expr()?;
+                    self.expect(TokenKind::Byte(b']'))?;
+
+                    self.builder
+                        .expr(ExprKind::Index { object: left, key }, self.span_from(start))
+                }
+                TokenKind::Byte(b':') => {
+                    self.advance()?;
+                    let name = self.name()?;
+                    let args = self.args()?;
+
+                    self.builder.expr(
+                        ExprKind::Method {
+                            object: left,
+                            name,
+                            args,
+                        },
+                        self.span_from(start),
+                    )
+                }
+                TokenKind::Byte(b'(') | TokenKind::Byte(b'{') | TokenKind::Str(_) => {
+                    let args = self.args()?;
+
+                    self.builder
+                        .expr(ExprKind::Call { callee: left, args }, self.span_from(start))
+                }
+                _ => return Ok(left),
+            };
+        }
+    }
+
+    /// The name after `.` or in `function a.b`, as the string key it stands for.
+    pub(super) fn name_as_string(&mut self) -> Result<ExprId, Error> {
+        let span = self.current.span;
+        let name = self.name()?;
+
+        Ok(self
+            .builder
+            .expr(ExprKind::Str(name.to_vec().into_boxed_slice()), span))
+    }
+
     fn simple_expr(&mut self) -> Result<ExprId, Error> {
         let start = self.current.span.start;
 
@@ -107,52 +163,6 @@ impl<'a> Parser<'a> {
         }
 
         Err(self.syntax(ErrorKind::UnexpectedSymbol))
-    }
-
-    /// `suffixedexp -> primaryexp { '.' NAME | '[' expr ']' | ':' NAME args | args }`
-    pub(super) fn suffixed_expr(&mut self) -> Result<ExprId, Error> {
-        let start = self.current.span.start;
-        let mut left = self.primary_expr()?;
-
-        loop {
-            left = match self.current.kind {
-                TokenKind::Byte(b'.') => {
-                    self.advance()?;
-                    let key = self.name_as_string()?;
-                    self.builder
-                        .expr(ExprKind::Index { object: left, key }, self.span_from(start))
-                }
-                TokenKind::Byte(b'[') => {
-                    self.advance()?;
-                    let key = self.expr()?;
-                    self.expect(TokenKind::Byte(b']'))?;
-
-                    self.builder
-                        .expr(ExprKind::Index { object: left, key }, self.span_from(start))
-                }
-                TokenKind::Byte(b':') => {
-                    self.advance()?;
-                    let name = self.name()?;
-                    let args = self.args()?;
-
-                    self.builder.expr(
-                        ExprKind::Method {
-                            object: left,
-                            name,
-                            args,
-                        },
-                        self.span_from(start),
-                    )
-                }
-                TokenKind::Byte(b'(') | TokenKind::Byte(b'{') | TokenKind::Str(_) => {
-                    let args = self.args()?;
-
-                    self.builder
-                        .expr(ExprKind::Call { callee: left, args }, self.span_from(start))
-                }
-                _ => return Ok(left),
-            };
-        }
     }
 
     /// `args -> '(' [explist] ')' | tablector | STRING`
@@ -234,16 +244,6 @@ impl<'a> Parser<'a> {
         }
 
         Ok(Field::Positional(self.expr()?))
-    }
-
-    /// The name after `.` or in `function a.b`, as the string key it stands for.
-    pub(super) fn name_as_string(&mut self) -> Result<ExprId, Error> {
-        let span = self.current.span;
-        let name = self.name()?;
-
-        Ok(self
-            .builder
-            .expr(ExprKind::Str(name.to_vec().into_boxed_slice()), span))
     }
 }
 

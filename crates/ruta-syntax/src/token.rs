@@ -14,7 +14,7 @@ impl Span {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Token<'a> {
+pub(crate) struct Token<'a> {
     pub kind: TokenKind<'a>,
     pub span: Span,
 }
@@ -22,7 +22,7 @@ pub struct Token<'a> {
 /// `global` is deliberately absent. `LUA_COMPAT_GLOBAL` is on, which makes it an ordinary name,
 /// and the parser separates the two readings with one token of lookahead.
 #[derive(Debug, Clone, PartialEq)]
-pub enum TokenKind<'a> {
+pub(crate) enum TokenKind<'a> {
     Name(&'a [u8]),
     Int(i64),
     Float(f64),
@@ -69,7 +69,7 @@ pub enum TokenKind<'a> {
 
 impl TokenKind<'_> {
     /// How a token is named inside an error message.
-    pub fn describe(&self) -> String {
+    pub(crate) fn describe(&self) -> String {
         match self {
             TokenKind::Name(_)
             | TokenKind::Int(_)
@@ -81,7 +81,7 @@ impl TokenKind<'_> {
     }
 
     /// The characters a token is written with, which is what a `near` clause quotes.
-    pub fn symbol(&self) -> Vec<u8> {
+    pub(crate) fn symbol(&self) -> Vec<u8> {
         match self {
             TokenKind::Byte(byte) if !(0x20..=0x7e).contains(byte) => {
                 format!("<\\{byte}>").into_bytes()

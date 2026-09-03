@@ -3,7 +3,7 @@
 use crate::ast::{ExprId, ExprKind, Field, FuncId, Vararg};
 use crate::error::Error;
 
-use super::Resolver;
+use super::resolver::Resolver;
 
 impl<'src> Resolver<'_, 'src> {
     /// An assignment target.

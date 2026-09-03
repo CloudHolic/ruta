@@ -2,7 +2,7 @@
 
 use crate::error::{Error, ErrorKind};
 
-use super::{Resolver, error};
+use super::resolver::{Resolver, error};
 
 #[derive(Debug)]
 pub(super) struct BlockFrame<'src> {

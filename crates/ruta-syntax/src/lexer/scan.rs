@@ -8,7 +8,7 @@ use super::bytes::{is_name_part, is_name_start};
 
 impl<'a> Lexer<'a> {
     /// The next token. At the end of the source this keeps returning `TokenKind::eof`.
-    pub fn next_token(&mut self) -> Result<Token<'a>, Error> {
+    pub(crate) fn next_token(&mut self) -> Result<Token<'a>, Error> {
         loop {
             let start = self.pos;
             let Some(byte) = self.peek() else {

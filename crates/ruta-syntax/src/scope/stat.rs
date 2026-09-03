@@ -3,8 +3,8 @@
 use crate::ast::{Block, BlockId, StatId, StatKind};
 use crate::error::Error;
 
-use super::Resolver;
 use super::label::{Exit, Goto};
+use super::resolver::Resolver;
 
 impl<'src> Resolver<'_, 'src> {
     /// A block's statements without a scope of their own, so that `repeat` can hold its scope open past the last one.

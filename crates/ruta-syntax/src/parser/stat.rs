@@ -4,7 +4,7 @@ use crate::ast::{Attribute, BlockId, ExprId, ExprKind, StatId, StatKind, VarName
 use crate::error::{Error, ErrorKind};
 use crate::token::TokenKind;
 
-use super::Parser;
+use super::chunk::Parser;
 
 impl<'a> Parser<'a> {
     /// The chunk's own block, which has to reach the end of the source.
