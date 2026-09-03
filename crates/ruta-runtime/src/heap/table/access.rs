@@ -176,7 +176,7 @@ impl Heap {
             body.put_node(free, key, value, body.node_next(main));
             body.set_node_next(main, Some(free));
         } else {
-            // It is noly passing through. Move it aside and tkae its place.
+            // It is only passing through. Move it aside and take its place.
             let mut previous = squatter_main;
             while body.node_next(previous) != Some(main) {
                 previous = body.node_next(previous).expect("main is on this chain");

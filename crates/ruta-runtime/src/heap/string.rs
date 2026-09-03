@@ -16,7 +16,7 @@ pub struct LuaStr {
 }
 
 impl LuaStr {
-    /// The bytes of the string, wihtout the trailing NUL.
+    /// The bytes of the string, without the trailing NUL.
     pub fn as_bytes(&self) -> &[u8] {
         &self.storage[..&self.storage.len() - 1]
     }

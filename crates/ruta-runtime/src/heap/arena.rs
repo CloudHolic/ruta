@@ -1,4 +1,4 @@
-//! The arena itsef: the slots, and the one place they are written to.
+//! The arena itself: the slots, and the one place they are written to.
 
 use std::mem;
 

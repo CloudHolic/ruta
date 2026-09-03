@@ -27,7 +27,7 @@ pub(super) enum Resume {
 struct Node {
     key: Value,
     value: Value,
-    /// The reference stores an offset becuase its node array moves when it grows.
+    /// The reference stores an offset because its node array moves when it grows.
     next: Option<u32>,
 }
 
@@ -49,7 +49,7 @@ impl Table {
         key >= 1 && key as u128 <= self.array.len() as u128
     }
 
-    ///The first live entry at or after a resume point.
+    /// The first live entry at or after a resume point.
     pub(super) fn entry_from(&self, resume: Resume) -> Option<(Value, Value)> {
         let node_start = match resume {
             Resume::Array(start) => {
@@ -187,7 +187,7 @@ impl Table {
         from_array.chain(from_nodes).collect()
     }
 
-    /// Lays out both parts ofr a known number of entries.
+    /// Lays out both parts of a known number of entries.
     pub(super) fn rebuild(&mut self, array_size: usize, hash_count: usize) {
         self.array = vec![Value::Nil; array_size];
         self.nodes = vec![Node::default(); nodes_for(hash_count)];
@@ -244,7 +244,7 @@ pub(super) fn best_array_size(counts: &[usize], integers: usize) -> (usize, usiz
     best
 }
 
-/// The node count that holds `wnated` keys.
+/// The node count that holds `wanted` keys.
 fn nodes_for(wanted: usize) -> usize {
     if wanted == 0 {
         return 0;
