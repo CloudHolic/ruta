@@ -4,7 +4,7 @@ Fourteen stages from an empty workspace to a Lua 5.5.1 that compiles to a standa
 executable. The order is chosen so that each stage can be scored: every stage after 4 should
 move the number that `cargo test` prints.
 
-Current position: **stage 1 complete, stage 2 next. Conformance 0/31, parse 610/636.**
+Current position: **stage 3 complete, stage 4 next. Conformance 0/31, parse 635/636.**
 
 ## Definition of done
 
