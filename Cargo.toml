@@ -11,6 +11,7 @@ repository = "https://github.com/CloudHolic/ruta"
 [workspace.dependencies]
 ruta-syntax = { path = "crates/ruta-syntax" }
 ruta-runtime = { path = "crates/ruta-runtime" }
+ruta-compile = { path = "crates/ruta-compile" }
 ruta-conformance = { path = "crates/ruta-conformance" }
 
 anyhow = "1"

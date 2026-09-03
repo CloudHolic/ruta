@@ -190,6 +190,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ruta-compile"
+version = "0.0.0"
+dependencies = [
+ "ruta-syntax",
+]
+
+[[package]]
 name = "ruta-conformance"
 version = "0.0.0"
 dependencies = [
