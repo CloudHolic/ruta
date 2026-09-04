@@ -1,6 +1,6 @@
 //! The parser's state: the token window it reads through, and the depth it is allowed to recurse to.
 
-use crate::ast::{Ast, Builder};
+use crate::ast::{Ast, Builder, Var};
 use crate::error::{Error, ErrorKind};
 use crate::lexer::Lexer;
 use crate::token::{Span, Token, TokenKind};
@@ -105,6 +105,16 @@ impl<'a> Parser<'a> {
         self.advance()?;
 
         Ok(name)
+    }
+
+    /// A name being declared, numbered so that every use of it can point back here.
+    pub(super) fn var(&mut self) -> Result<Var<'a>, Error> {
+        let name = self.name()?;
+
+        Ok(Var {
+            name,
+            id: self.builder.var(),
+        })
     }
 
     pub(super) fn current_name(&self) -> Option<&'a [u8]> {

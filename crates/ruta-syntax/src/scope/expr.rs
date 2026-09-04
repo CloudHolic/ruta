@@ -77,16 +77,16 @@ impl<'src> Resolver<'_, 'src> {
         self.enter_function();
 
         // A method's receiver is not in the parameter list.
-        if func.is_method {
+        if func.self_var.is_some() {
             self.declare_local(b"self", false);
         }
 
         for &param in func.params.iter() {
-            self.declare_local(param, false);
+            self.declare_local(param.name, false);
         }
 
-        if let Some(Vararg::Named(name)) = func.vararg {
-            self.declare_local(name, true);
+        if let Some(Vararg::Named(var)) = func.vararg {
+            self.declare_local(var.name, true);
         }
 
         self.stats(ast.block(func.body), true)?;

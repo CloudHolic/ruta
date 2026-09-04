@@ -14,6 +14,17 @@ pub struct BlockId(u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FuncId(u32);
 
+/// A declaration site. Every use of the name resolves to the site's id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VarId(u32);
+
+/// A name being declared, where no attribute can be written after it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Var<'a> {
+    pub name: &'a [u8],
+    pub id: VarId,
+}
+
 #[derive(Debug)]
 pub struct Ast<'a> {
     exprs: Vec<Expr<'a>>,
@@ -141,7 +152,7 @@ pub enum StatKind<'a> {
         func: FuncId,
     },
     LocalFunction {
-        name: &'a [u8],
+        name: Var<'a>,
         func: FuncId,
     },
     While {
@@ -153,14 +164,14 @@ pub enum StatKind<'a> {
         condition: ExprId,
     },
     NumericFor {
-        name: &'a [u8],
+        name: Var<'a>,
         start: ExprId,
         limit: ExprId,
         step: Option<ExprId>,
         body: BlockId,
     },
     GenericFor {
-        names: Box<[&'a [u8]]>,
+        names: Box<[Var<'a>]>,
         exprs: Box<[ExprId]>,
         body: BlockId,
     },
@@ -178,10 +189,11 @@ pub enum StatKind<'a> {
 /// A function body, shared by every form that has one: literals, `function a.b()`, and `local function f()`.
 #[derive(Debug)]
 pub struct Func<'a> {
-    pub params: Box<[&'a [u8]]>,
+    pub params: Box<[Var<'a>]>,
     /// `...`, and the name it was bound to when it had one.
     pub vararg: Option<Vararg<'a>>,
-    pub is_method: bool,
+    /// The receiver a method binds before its parameters.
+    pub self_var: Option<VarId>,
     pub body: BlockId,
     /// Ends at the `end` that closes the body.
     pub span: Span,
@@ -192,13 +204,14 @@ pub struct Func<'a> {
 pub enum Vararg<'a> {
     Anonymous,
     /// `...t` - the extra arguments arrive as a table under this name.
-    Named(&'a [u8]),
+    Named(Var<'a>),
 }
 
 /// One name in a `local` or `global` list, with the attributes written after it.
 #[derive(Debug)]
 pub struct VarName<'a> {
     pub name: &'a [u8],
+    pub id: VarId,
     pub attribute: Option<Attribute>,
     pub span: Span,
 }
@@ -249,6 +262,7 @@ pub(crate) struct Builder<'a> {
     stats: Vec<Stat<'a>>,
     blocks: Vec<Block>,
     funcs: Vec<Func<'a>>,
+    vars: u32,
 }
 
 impl<'a> Builder<'a> {
@@ -278,6 +292,11 @@ impl<'a> Builder<'a> {
     pub(crate) fn func(&mut self, func: Func<'a>) -> FuncId {
         self.funcs.push(func);
         FuncId(self.funcs.len() as u32 - 1)
+    }
+
+    pub(crate) fn var(&mut self) -> VarId {
+        self.vars += 1;
+        VarId(self.vars - 1)
     }
 
     /// What a node turned out to be.

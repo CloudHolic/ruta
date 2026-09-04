@@ -2,7 +2,7 @@
 
 use std::mem;
 
-use crate::ast::{ExprId, ExprKind, Func, FuncId, StatKind, Vararg};
+use crate::ast::{ExprId, ExprKind, Func, FuncId, StatKind, Var, Vararg};
 use crate::error::{Error, ErrorKind};
 use crate::token::TokenKind;
 
@@ -76,7 +76,10 @@ impl<'a> Parser<'a> {
                     vararg = Some(match self.current_name() {
                         Some(name) => {
                             self.advance()?;
-                            Vararg::Named(name)
+                            Vararg::Named(Var {
+                                name,
+                                id: self.builder.var(),
+                            })
                         }
                         None => Vararg::Anonymous,
                     });
@@ -87,7 +90,7 @@ impl<'a> Parser<'a> {
                     return Err(self.syntax(ErrorKind::NameOrDotsExpected));
                 }
 
-                params.push(self.name()?);
+                params.push(self.var()?);
                 if !self.eat_byte(b',')? {
                     break;
                 }
@@ -106,10 +109,12 @@ impl<'a> Parser<'a> {
         self.expect_match(TokenKind::End, TokenKind::Function, start)?;
 
         let span = self.span_from(start);
+        let self_var = is_method.then(|| self.builder.var());
+
         Ok(self.builder.func(Func {
             params: params.into_boxed_slice(),
             vararg,
-            is_method,
+            self_var,
             body,
             span,
         }))

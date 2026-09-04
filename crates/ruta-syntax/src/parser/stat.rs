@@ -186,7 +186,7 @@ impl<'a> Parser<'a> {
     /// `forstat -> 'for' (NAME '=' exp ',' exp [',' exp] | NAME { ',' NAME } 'in' explist) 'do' block 'end'`
     fn for_stat(&mut self, start: u32) -> Result<StatKind<'a>, Error> {
         self.advance()?;
-        let first = self.name()?;
+        let first = self.var()?;
 
         if !self.at_byte(b'=') && !self.at_byte(b',') && !matches!(self.current.kind, TokenKind::In)
         {
@@ -215,7 +215,7 @@ impl<'a> Parser<'a> {
         } else {
             let mut names = vec![first];
             while self.eat_byte(b',')? {
-                names.push(self.name()?);
+                names.push(self.var()?);
             }
 
             self.expect(TokenKind::In)?;
@@ -240,7 +240,7 @@ impl<'a> Parser<'a> {
         if matches!(self.current.kind, TokenKind::Function) {
             let start = self.current.span.start;
             self.advance()?;
-            let name = self.name()?;
+            let name = self.var()?;
 
             return Ok(StatKind::LocalFunction {
                 name,
@@ -353,6 +353,7 @@ impl<'a> Parser<'a> {
 
             names.push(VarName {
                 name,
+                id: self.builder.var(),
                 attribute,
                 span: self.span_from(start),
             });
@@ -396,6 +397,7 @@ impl<'a> Parser<'a> {
 
         Ok(VarName {
             name,
+            id: self.builder.var(),
             attribute,
             span: self.span_from(start),
         })
