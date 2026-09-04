@@ -3,6 +3,7 @@
 use crate::ast::{Block, BlockId, StatId, StatKind};
 use crate::error::Error;
 
+use super::binding::Access;
 use super::label::{Exit, Goto};
 use super::resolver::Resolver;
 
@@ -77,7 +78,7 @@ impl<'src> Resolver<'_, 'src> {
                 }
 
                 for name in names.iter() {
-                    self.declare_local(name.name, name.attribute.is_some());
+                    self.declare_local(name.name, Access::Local(name.id), name.attribute.is_some());
                 }
             }
             StatKind::GlobalAll { attribute } => self.declare_global(None, attribute.is_some()),
@@ -102,7 +103,7 @@ impl<'src> Resolver<'_, 'src> {
             }
             StatKind::LocalFunction { name, func } => {
                 // Declared before the body so that the function can call itself.
-                self.declare_local(name.name, false);
+                self.declare_local(name.name, Access::Local(name.id), false);
                 self.func(*func)?;
             }
             StatKind::While { condition, body } => {
@@ -132,7 +133,7 @@ impl<'src> Resolver<'_, 'src> {
                 }
 
                 self.enter_block();
-                self.declare_local(name.name, true);
+                self.declare_local(name.name, Access::Local(name.id), true);
                 self.block(*body)?;
                 self.leave_block(ast.block(*body).close_at, Exit::Block)?;
             }
@@ -145,7 +146,7 @@ impl<'src> Resolver<'_, 'src> {
 
                 for (index, &name) in names.iter().enumerate() {
                     // Only the control variable is read-only.
-                    self.declare_local(name.name, index == 0);
+                    self.declare_local(name.name, Access::Local(name.id), index == 0);
                 }
 
                 self.block(*body)?;

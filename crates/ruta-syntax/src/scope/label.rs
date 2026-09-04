@@ -2,6 +2,7 @@
 
 use crate::error::{Error, ErrorKind};
 
+use super::binding::Capture;
 use super::resolver::{Resolver, error};
 
 #[derive(Debug)]
@@ -11,6 +12,16 @@ pub(super) struct BlockFrame<'src> {
     pub(super) labels: Vec<Label<'src>>,
     /// Gotos that have not found a label yet. Settled when the block closes.
     pub(super) gotos: Vec<Goto<'src>>,
+}
+
+#[derive(Debug)]
+pub(super) struct FunctionFrame<'src> {
+    /// Where this function's block start.
+    blocks: usize,
+    /// Which entry of the output this function fills.
+    index: usize,
+    /// One entry per upvalue, with the name that first asked for it.
+    pub(super) upvalues: Vec<(&'src [u8], Capture)>,
 }
 
 #[derive(Debug)]
@@ -108,14 +119,26 @@ impl<'src> Resolver<'_, 'src> {
         Ok(())
     }
 
-    pub(super) fn enter_function(&mut self) {
-        self.functions.push(self.blocks.len());
+    pub(super) fn enter_function(&mut self, index: usize) {
+        self.functions.push(FunctionFrame {
+            blocks: self.blocks.len(),
+            index,
+            upvalues: Vec::new(),
+        });
         self.enter_block();
     }
 
     pub(super) fn leave_function(&mut self, close_at: u32) -> Result<(), Error> {
         self.leave_block(close_at, Exit::Function)?;
-        self.functions.pop();
+
+        let frame = self.functions.pop().expect("inside a function");
+        let upvalues = frame
+            .upvalues
+            .into_iter()
+            .map(|(_, capture)| capture)
+            .collect();
+
+        self.bindings.set_upvalues(frame.index, upvalues);
 
         Ok(())
     }
@@ -127,7 +150,7 @@ impl<'src> Resolver<'_, 'src> {
         report_at: u32,
         tail: bool,
     ) -> Result<(), Error> {
-        let floor = self.functions.last().copied().unwrap_or(0);
+        let floor = self.functions.last().map_or(0, |frame| frame.blocks);
 
         for frame in self.blocks[floor..].iter() {
             if let Some(first) = frame.labels.iter().find(|label| label.name == name) {

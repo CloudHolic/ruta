@@ -3,21 +3,24 @@
 use crate::ast::{ExprId, ExprKind, Field, FuncId, Vararg};
 use crate::error::Error;
 
+use super::binding::Access;
 use super::resolver::Resolver;
 
 impl<'src> Resolver<'_, 'src> {
     /// An assignment target.
     pub(super) fn target(&mut self, id: ExprId) -> Result<(), Error> {
-        let expr = self.ast.expr(id);
+        let ast = self.ast;
+        let expr = ast.expr(id);
 
         match &expr.kind {
-            ExprKind::Name(name) => self.access(name, expr.span.start, true),
+            ExprKind::Name(name) => self.access(id, name, expr.span.start, true),
             _ => self.expr(id),
         }
     }
 
     pub(super) fn expr(&mut self, id: ExprId) -> Result<(), Error> {
-        let expr = self.ast.expr(id);
+        let ast = self.ast;
+        let expr = ast.expr(id);
 
         match &expr.kind {
             ExprKind::Nil
@@ -27,7 +30,7 @@ impl<'src> Resolver<'_, 'src> {
             | ExprKind::Float(_)
             | ExprKind::Str(_)
             | ExprKind::Vararg => {}
-            ExprKind::Name(name) => self.access(name, expr.span.start, false)?,
+            ExprKind::Name(name) => self.access(id, name, expr.span.start, false)?,
             ExprKind::Paren(inner) => self.expr(*inner)?,
             ExprKind::Index { object, key } => {
                 self.expr(*object)?;
@@ -74,19 +77,19 @@ impl<'src> Resolver<'_, 'src> {
         let ast = self.ast;
         let func = ast.func(id);
 
-        self.enter_function();
+        self.enter_function(id.index() + 1);
 
         // A method's receiver is not in the parameter list.
-        if func.self_var.is_some() {
-            self.declare_local(b"self", false);
+        if let Some(var) = func.self_var {
+            self.declare_local(b"self", Access::Local(var), false);
         }
 
-        for &param in func.params.iter() {
-            self.declare_local(param.name, false);
+        for param in func.params.iter() {
+            self.declare_local(param.name, Access::Local(param.id), false);
         }
 
         if let Some(Vararg::Named(var)) = func.vararg {
-            self.declare_local(var.name, true);
+            self.declare_local(var.name, Access::Local(var.id), true);
         }
 
         self.stats(ast.block(func.body), true)?;

@@ -45,7 +45,9 @@ fn parse_only(progname: &str, path: &str) -> ExitCode {
     let outcome: io::Result<Result<(), Error>> = thread::scope(|scope| {
         let worker = thread::Builder::new()
             .stack_size(PARSE_STACK)
-            .spawn_scoped(scope, || parse_chunk(&source).and_then(|ast| resolve(&ast)))?;
+            .spawn_scoped(scope, || {
+                parse_chunk(&source).and_then(|ast| resolve(&ast).map(|_| ()))
+            })?;
 
         Ok(worker
             .join()

@@ -3,16 +3,28 @@
 use crate::token::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ExprId(u32);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StatId(u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BlockId(u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExprId(u32);
+
+impl ExprId {
+    pub(crate) fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FuncId(u32);
+
+impl FuncId {
+    pub(crate) fn index(self) -> usize {
+        self.0 as usize
+    }
+}
 
 /// A declaration site. Every use of the name resolves to the site's id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +66,14 @@ impl<'a> Ast<'a> {
 
     pub fn func(&self, id: FuncId) -> &Func<'a> {
         &self.funcs[id.0 as usize]
+    }
+
+    pub fn expr_count(&self) -> usize {
+        self.exprs.len()
+    }
+
+    pub fn func_count(&self) -> usize {
+        self.funcs.len()
     }
 }
 
