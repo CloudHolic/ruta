@@ -43,6 +43,8 @@ pub enum UpvalSource {
     ParentLocal(Reg),
     /// An upvalue of the enclosing function, by index.
     ParentUpval(u16),
+    /// `_ENV`, which the loader supplies. Only the outermost function has one, at index 0.
+    Env,
 }
 
 /// Index into [`Program::funcs`].
