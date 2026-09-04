@@ -139,6 +139,13 @@ pub enum Op {
         spread: bool,
         results: Results,
     },
+    /// `return f(...)`, which reuses the caller's frame. Only a `return` whose sole argument is one call qualifies,
+    /// and only outside the scope of a to-be-closed variable.
+    TailCall {
+        callee: Reg,
+        args: Box<[Reg]>,
+        spread: bool,
+    },
     /// Close every upvalue that points at `from` or above, because those slots are dying.
     CloseUpvals {
         from: Reg,
@@ -183,6 +190,7 @@ impl Op {
             Op::Jump { .. }
                 | Op::Branch { .. }
                 | Op::Return { .. }
+                | Op::TailCall { .. }
                 | Op::ForPrep { .. }
                 | Op::ForLoop { .. }
         )

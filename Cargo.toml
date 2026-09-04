@@ -9,10 +9,11 @@ license = "MIT"
 repository = "https://github.com/CloudHolic/ruta"
 
 [workspace.dependencies]
-ruta-syntax = { path = "crates/ruta-syntax" }
-ruta-runtime = { path = "crates/ruta-runtime" }
+ruta-bytecode = { path = "crates/ruta-bytecode" }
 ruta-compile = { path = "crates/ruta-compile" }
 ruta-conformance = { path = "crates/ruta-conformance" }
+ruta-runtime = { path = "crates/ruta-runtime" }
+ruta-syntax = { path = "crates/ruta-syntax" }
 
 anyhow = "1"
 cc = "1"

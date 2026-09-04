@@ -179,6 +179,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ruta-bytecode"
+version = "0.0.0"
+
+[[package]]
 name = "ruta-cli"
 version = "0.0.0"
 dependencies = [
