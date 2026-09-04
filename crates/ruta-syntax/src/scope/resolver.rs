@@ -184,7 +184,7 @@ pub fn resolve(ast: &Ast<'_>) -> Result<Bindings, Error> {
         }],
         blocks: Vec::new(),
         functions: Vec::new(),
-        bindings: Bindings::new(ast.expr_count(), ast.func_count() + 1),
+        bindings: Bindings::new(ast.expr_count(), ast.stat_count(), ast.func_count() + 1),
     };
 
     let main = ast.main_block();

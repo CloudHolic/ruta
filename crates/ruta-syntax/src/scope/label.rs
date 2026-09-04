@@ -1,5 +1,6 @@
 //! Block and function frames, and the labels they hold.
 
+use crate::ast::StatId;
 use crate::error::{Error, ErrorKind};
 
 use super::binding::Capture;
@@ -27,6 +28,7 @@ pub(super) struct FunctionFrame<'src> {
 #[derive(Debug)]
 pub(super) struct Label<'src> {
     name: &'src [u8],
+    stat: StatId,
     /// The offset a later collision names by line.
     at: u32,
     /// How many declarations are alive where the label sits.
@@ -36,6 +38,7 @@ pub(super) struct Label<'src> {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Goto<'src> {
     pub(super) name: &'src [u8],
+    pub(super) stat: StatId,
     /// The offset the message names by line.
     pub(super) at: u32,
     /// How many declarations were alive where the goto was written.
@@ -79,6 +82,8 @@ impl<'src> Resolver<'_, 'src> {
                     close_at,
                 ));
             }
+
+            self.bindings.record_jump(goto.stat, label.stat);
         }
 
         let mut unresolved = frame
@@ -146,6 +151,7 @@ impl<'src> Resolver<'_, 'src> {
     pub(super) fn declare_label(
         &mut self,
         name: &'src [u8],
+        stat: StatId,
         at: u32,
         report_at: u32,
         tail: bool,
@@ -170,6 +176,7 @@ impl<'src> Resolver<'_, 'src> {
 
         frame.labels.push(Label {
             name,
+            stat,
             at,
             declarations,
         });

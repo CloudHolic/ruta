@@ -39,7 +39,7 @@ impl<'src> Resolver<'_, 'src> {
                     unreachable!("the run holds labels only")
                 };
 
-                self.declare_label(name, stat.span.start, report_at, tail)?;
+                self.declare_label(name, id, stat.span.start, report_at, tail)?;
             }
 
             index = last + 1;
@@ -171,6 +171,7 @@ impl<'src> Resolver<'_, 'src> {
             StatKind::Goto(name) => {
                 let goto = Goto {
                     name,
+                    stat: id,
                     at: ast.stat(id).span.start,
                     declarations: self.declarations.len(),
                 };

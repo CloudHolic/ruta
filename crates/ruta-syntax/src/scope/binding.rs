@@ -1,6 +1,6 @@
 //! What each name turned out to name.
 
-use crate::ast::{ExprId, FuncId, VarId};
+use crate::ast::{ExprId, FuncId, StatId, VarId};
 
 /// Where a value lives, relative to the function that reads it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +39,7 @@ pub struct FunctionBindings {
 #[derive(Debug)]
 pub struct Bindings {
     uses: Box<[Option<Binding>]>,
+    jumps: Box<[Option<StatId>]>,
     funcs: Box<[FunctionBindings]>,
 }
 
@@ -46,6 +47,11 @@ impl Bindings {
     /// What the name written at this expression resolves to, or `None` when the expression is not a name.
     pub fn at(&self, id: ExprId) -> Option<Binding> {
         self.uses[id.index()]
+    }
+
+    /// The label statement this goto reaches, or `None` when the statement is not a goto.
+    pub fn target(&self, goto: StatId) -> Option<StatId> {
+        self.jumps[goto.index()]
     }
 
     /// The outermost function, the one a chunk itself is.
@@ -57,15 +63,20 @@ impl Bindings {
         &self.funcs[id.index() + 1]
     }
 
-    pub(super) fn new(exprs: usize, funcs: usize) -> Bindings {
+    pub(super) fn new(exprs: usize, stats: usize, funcs: usize) -> Bindings {
         Bindings {
             uses: vec![None; exprs].into_boxed_slice(),
+            jumps: vec![None; stats].into_boxed_slice(),
             funcs: (0..funcs).map(|_| FunctionBindings::default()).collect(),
         }
     }
 
     pub(super) fn record(&mut self, id: ExprId, binding: Binding) {
         self.uses[id.index()] = Some(binding);
+    }
+
+    pub(super) fn record_jump(&mut self, goto: StatId, label: StatId) {
+        self.jumps[goto.index()] = Some(label);
     }
 
     pub(super) fn set_upvalues(&mut self, index: usize, upvalues: Box<[Capture]>) {

@@ -3,15 +3,21 @@
 use crate::token::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StatId(u32);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BlockId(u32);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExprId(u32);
 
 impl ExprId {
+    pub(crate) fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StatId(u32);
+
+impl StatId {
     pub(crate) fn index(self) -> usize {
         self.0 as usize
     }
@@ -39,9 +45,9 @@ pub struct Var<'a> {
 
 #[derive(Debug)]
 pub struct Ast<'a> {
+    blocks: Vec<Block>,
     exprs: Vec<Expr<'a>>,
     stats: Vec<Stat<'a>>,
-    blocks: Vec<Block>,
     funcs: Vec<Func<'a>>,
     main: BlockId,
 }
@@ -60,16 +66,20 @@ impl<'a> Ast<'a> {
         &self.exprs[id.0 as usize]
     }
 
+    pub fn expr_count(&self) -> usize {
+        self.exprs.len()
+    }
+
     pub fn stat(&self, id: StatId) -> &Stat<'a> {
         &self.stats[id.0 as usize]
     }
 
-    pub fn func(&self, id: FuncId) -> &Func<'a> {
-        &self.funcs[id.0 as usize]
+    pub fn stat_count(&self) -> usize {
+        self.stats.len()
     }
 
-    pub fn expr_count(&self) -> usize {
-        self.exprs.len()
+    pub fn func(&self, id: FuncId) -> &Func<'a> {
+        &self.funcs[id.0 as usize]
     }
 
     pub fn func_count(&self) -> usize {
@@ -326,9 +336,9 @@ impl<'a> Builder<'a> {
 
     pub(crate) fn finish(self, main: BlockId) -> Ast<'a> {
         Ast {
+            blocks: self.blocks,
             exprs: self.exprs,
             stats: self.stats,
-            blocks: self.blocks,
             funcs: self.funcs,
             main,
         }
