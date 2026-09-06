@@ -1,10 +1,19 @@
 //! Traversing the tree, one function at a time.
 
-use ruta_syntax::ast::Ast;
+use ruta_syntax::ast::{Ast, StatId, VarId};
 use ruta_syntax::scope::{Bindings, Capture};
 use ruta_syntax::token::Span;
 
 use crate::ir::{Block, BlockIdx, Function, Instr, Op, Program, Reg, UpvalSource, Vararg};
+
+/// A slot that is in scope. The closing value a generic `for` binds has no name of its own.
+#[derive(Debug)]
+pub(super) struct Local {
+    pub(super) var: Option<VarId>,
+    pub(super) reg: Reg,
+    /// A to-be-closed slot. A `return f()` inside its scope is not a tail call.
+    pub(super) closes: bool,
+}
 
 /// One function being built.
 /// The stack of these is what lets a nested function be lowered to completion in the middle of its parent.
@@ -14,7 +23,11 @@ pub(super) struct FuncState {
     index: usize,
     regs: u32,
     /// The locals in scope, innermost last. A name resolves to the last match.
-    pub(super) vars: Vec<(ruta_syntax::ast::VarId, Reg)>,
+    pub(super) vars: Vec<Local>,
+    /// Where each enclosing loop sends a `brea`, innermost last.
+    pub(super) loops: Vec<BlockIdx>,
+    /// The block a label statement starts, made when the label is first named.
+    labels: Vec<(StatId, BlockIdx)>,
     blocks: Vec<Block>,
     current: BlockIdx,
 }
@@ -68,6 +81,25 @@ impl Lowerer<'_> {
         state.blocks[current].instrs.push(Instr { op, at });
     }
 
+    /// Leave the block alone when control cannot reach the end of it.
+    pub(super) fn jump_to(&mut self, block: BlockIdx, at: u32) {
+        if !self.is_terminated() {
+            self.emit(Op::Jump { to: block }, at);
+        }
+    }
+
+    /// The block a label starts. A goto that runs before the label is written makes it.
+    pub(super) fn label_block(&mut self, label: StatId) -> BlockIdx {
+        if let Some((_, block)) = self.state().labels.iter().find(|(id, _)| *id == label) {
+            return *block;
+        }
+
+        let block = self.new_block();
+        self.state().labels.push((label, block));
+
+        block
+    }
+
     /// Claims this function's entry in the program, so that a child can claim the next one.
     fn enter_function(
         &mut self,
@@ -90,6 +122,8 @@ impl Lowerer<'_> {
             index,
             regs: 0,
             vars: Vec::new(),
+            loops: Vec::new(),
+            labels: Vec::new(),
             blocks: vec![Block::default()],
             current: BlockIdx(0),
         });

@@ -87,6 +87,10 @@ impl<'src> Resolver<'_, 'src> {
                     self.expr(value)?;
                 }
 
+                if let Some(first) = names.first().filter(|_| !values.is_empty()) {
+                    self.env(id, first.name, ast.stat(id).span.start)?;
+                }
+
                 for name in names.iter() {
                     self.declare_global(Some(name.name), name.attribute.is_some());
                 }
@@ -96,6 +100,8 @@ impl<'src> Resolver<'_, 'src> {
                 self.func(*func)?;
             }
             StatKind::GlobalFunction { name, func } => {
+                self.env(id, name, ast.stat(id).span.start)?;
+
                 // A declaration, not an assignment: it shadows a `global<const> *`, and it is
                 // one of the declarations that turn off the implicit `global *`.
                 self.declare_global(Some(name), false);

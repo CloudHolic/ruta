@@ -1,6 +1,6 @@
 //! The resolver's state: the declaration stack, and what a name turns out to be.
 
-use crate::ast::{Ast, ExprId};
+use crate::ast::{Ast, ExprId, StatId};
 use crate::error::{Error, ErrorKind, Near};
 
 use super::binding::{Access, Binding, Bindings, Capture};
@@ -103,6 +103,22 @@ impl<'src> Resolver<'_, 'src> {
         }
 
         self.bindings.record(id, binding);
+
+        Ok(())
+    }
+
+    /// Reaches `_ENV` for a statement that assigns a global without writing its name
+    /// as an expression. The name is only there for the message.
+    pub(super) fn env(&mut self, stat: StatId, name: &[u8], at: u32) -> Result<(), Error> {
+        let Resolution::Variable {
+            at_owner, owner, ..
+        } = self.lookup(b"_ENV")
+        else {
+            return Err(error(ErrorKind::EnvIsGlobal(name.into()), at));
+        };
+
+        let access = self.reach(b"_ENV", owner, at_owner);
+        self.bindings.record_env(stat, access);
 
         Ok(())
     }

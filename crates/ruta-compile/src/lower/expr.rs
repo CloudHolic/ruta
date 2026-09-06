@@ -159,9 +159,31 @@ impl Lowerer<'_> {
         )
     }
 
-    /// Lowers a call, a method call or `...`, which are the only expressions whose result count is not fixed.
-    /// Nothing may come between one of these and the instruction that consumes what it left pending.
     pub(super) fn multi(&mut self, id: ExprId, results: Results) {
+        let ast = self.ast;
+        let at = ast.expr(id).span.start;
+
+        if matches!(ast.expr(id).kind, ExprKind::Vararg) {
+            self.emit(Op::Vararg { results }, at);
+
+            return;
+        }
+
+        let (callee, args, spread) = self.callable(id);
+        self.emit(
+            Op::Call {
+                callee,
+                args,
+                spread,
+                results,
+            },
+            at,
+        );
+    }
+
+    /// A call's function and arguments, in registers.
+    /// Shared with the tail call, which is the same work under a different terminator.
+    pub(super) fn callable(&mut self, id: ExprId) -> (Reg, Box<[Reg]>, bool) {
         let ast = self.ast;
         let expr = ast.expr(id);
         let at = expr.span.start;
@@ -171,15 +193,7 @@ impl Lowerer<'_> {
                 let callee = self.operand(*callee);
                 let (args, spread) = self.explist_open(args);
 
-                self.emit(
-                    Op::Call {
-                        callee,
-                        args,
-                        spread,
-                        results,
-                    },
-                    at,
-                );
+                (callee, args, spread)
             }
             ExprKind::Method { object, name, args } => {
                 let object = self.operand(*object);
@@ -201,19 +215,46 @@ impl Lowerer<'_> {
                 args.push(object);
                 args.extend_from_slice(&rest);
 
-                self.emit(
-                    Op::Call {
-                        callee,
-                        args: args.into_boxed_slice(),
-                        spread,
-                        results,
-                    },
-                    at,
-                );
+                (callee, args.into_boxed_slice(), spread)
             }
-            ExprKind::Vararg => self.emit(Op::Vararg { results }, at),
-            kind => unreachable!("{kind:?} produces one value"),
+            kind => unreachable!("{kind:?} is not a call"),
         }
+    }
+
+    pub(super) fn access(&mut self, access: Access, at: u32) -> Reg {
+        let dest = self.reg();
+
+        match access {
+            Access::Local(var) => {
+                let src = self.lookup(var);
+                self.emit(Op::Move { dest, src }, at);
+            }
+            Access::Upvalue(index) => self.emit(Op::GetUpval { dest, index }, at),
+        }
+
+        dest
+    }
+
+    pub(super) fn lookup(&mut self, var: VarId) -> Reg {
+        self.state()
+            .vars
+            .iter()
+            .rev()
+            .find(|local| local.var == Some(var))
+            .map(|local| local.reg)
+            .expect("a local is declared before it is read")
+    }
+
+    /// Whether a to-be-closed slot is in scope, which is what stops a tail call.
+    pub(super) fn has_close(&mut self) -> bool {
+        self.state().vars.iter().any(|local| local.closes)
+    }
+
+    pub(super) fn is_call(&self, id: ExprId) -> bool {
+        matches!(
+            self.ast.expr(id).kind,
+            ExprKind::Call { .. } | ExprKind::Method { .. }
+        )
     }
 
     fn table(&mut self, fields: &[Field<'_>], dest: Reg, at: u32) {
@@ -315,30 +356,6 @@ impl Lowerer<'_> {
                 self.emit(Op::Index { dest, object, key }, at);
             }
         }
-    }
-
-    fn access(&mut self, access: Access, at: u32) -> Reg {
-        let dest = self.reg();
-
-        match access {
-            Access::Local(var) => {
-                let src = self.lookup(var);
-                self.emit(Op::Move { dest, src }, at);
-            }
-            Access::Upvalue(index) => self.emit(Op::GetUpval { dest, index }, at),
-        }
-
-        dest
-    }
-
-    fn lookup(&mut self, var: VarId) -> Reg {
-        self.state()
-            .vars
-            .iter()
-            .rev()
-            .find(|(id, _)| *id == var)
-            .map(|(_, reg)| *reg)
-            .expect("a local is declared before it is read")
     }
 
     /// `and` and `or`. Both arms write `dest`, which is why the IR is not in SSA form.

@@ -40,6 +40,7 @@ pub struct FunctionBindings {
 pub struct Bindings {
     uses: Box<[Option<Binding>]>,
     jumps: Box<[Option<StatId>]>,
+    envs: Box<[Option<Access>]>,
     funcs: Box<[FunctionBindings]>,
 }
 
@@ -52,6 +53,12 @@ impl Bindings {
     /// The label statement this goto reaches, or `None` when the statement is not a goto.
     pub fn target(&self, goto: StatId) -> Option<StatId> {
         self.jumps[goto.index()]
+    }
+
+    /// How the function reaches `_ENV` where this statement assigns a global.
+    /// A `global` declaration without an initializer assigns nothing and needs none.
+    pub fn env(&self, stat: StatId) -> Option<Access> {
+        self.envs[stat.index()]
     }
 
     /// The outermost function, the one a chunk itself is.
@@ -67,6 +74,7 @@ impl Bindings {
         Bindings {
             uses: vec![None; exprs].into_boxed_slice(),
             jumps: vec![None; stats].into_boxed_slice(),
+            envs: vec![None; stats].into_boxed_slice(),
             funcs: (0..funcs).map(|_| FunctionBindings::default()).collect(),
         }
     }
@@ -77,6 +85,10 @@ impl Bindings {
 
     pub(super) fn record_jump(&mut self, goto: StatId, label: StatId) {
         self.jumps[goto.index()] = Some(label);
+    }
+
+    pub(super) fn record_env(&mut self, stat: StatId, access: Access) {
+        self.envs[stat.index()] = Some(access);
     }
 
     pub(super) fn set_upvalues(&mut self, index: usize, upvalues: Box<[Capture]>) {
