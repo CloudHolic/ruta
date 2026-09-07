@@ -2,8 +2,29 @@
 
 use ruta_syntax::token::Span;
 
-use super::block::Block;
+use super::block::{Block, BlockIdx};
 use super::instr::Reg;
+
+/// A point in a function's instruction stream. The emitter turns these into a pc.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Position {
+    pub block: BlockIdx,
+    pub instr: u32,
+}
+
+/// A register a declaration holds for the whole of its scope.
+/// Scopes nest, so `number` never collides with another slot that is in scope at the time.
+#[derive(Debug)]
+pub struct Slot {
+    /// Absent where the source writes no name: a numeric `for` holds three such registers,
+    /// and so does the value a generic `for` closes.
+    pub name: Option<Box<[u8]>>,
+    pub reg: Reg,
+    /// How deep in the scope stack it sits, counted in slots.
+    pub number: u32,
+    pub enters: Position,
+    pub leaves: Position,
+}
 
 /// A whole chunk: every function it defines, main first.
 #[derive(Debug, Default)]
@@ -22,6 +43,8 @@ pub struct Function {
     pub regs: u32,
     /// One entry per upvalue, in the order the body refers to them.
     pub upvalues: Vec<UpvalSource>,
+    /// One entry per declaration, in the order the body declares them.
+    pub slots: Vec<Slot>,
     /// The whole body, for `in function at line %d` in a compile error.
     pub span: Span,
 }

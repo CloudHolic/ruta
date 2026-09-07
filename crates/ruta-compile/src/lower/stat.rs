@@ -5,7 +5,7 @@ use ruta_syntax::scope::{Access, Binding};
 
 use crate::ir::{BinOp, Const, Op, Reg, Results};
 
-use super::func::{Local, Lowerer};
+use super::func::Lowerer;
 
 /// Where an assignment puts its value, worked out before any value is evaluated.
 #[derive(Debug, Clone, Copy)]
@@ -36,7 +36,7 @@ impl Lowerer<'_> {
 
         self.stats(block);
         self.close_upvals(depth, block.close_at);
-        self.state().vars.truncate(depth);
+        self.leave(depth);
     }
 
     fn stat(&mut self, id: StatId) {
@@ -50,11 +50,12 @@ impl Lowerer<'_> {
                 self.explist(values, &dests, at);
 
                 for (name, reg) in names.iter().zip(dests) {
-                    self.state().vars.push(Local {
-                        var: Some(name.id),
+                    self.declare(
+                        Some(name.name),
+                        Some(name.id),
                         reg,
-                        closes: name.attribute == Some(Attribute::Close),
-                    });
+                        name.attribute == Some(Attribute::Close),
+                    );
                 }
             }
             StatKind::Global { names, values } => {
@@ -178,7 +179,7 @@ impl Lowerer<'_> {
                 }
 
                 self.state().loops.pop();
-                self.state().vars.truncate(depth);
+                self.leave(depth);
                 self.switch_to(exit);
             }
             StatKind::NumericFor {
@@ -207,6 +208,12 @@ impl Lowerer<'_> {
                     ),
                 }
 
+                // ForPrep wants the four in a row, so they are slots rather than temporaries.
+                let outer = self.state().vars.len();
+                self.declare(None, None, control, false);
+                self.declare(None, None, end, false);
+                self.declare(None, None, stride, false);
+
                 let inside = self.new_block();
                 let exit = self.new_block();
                 self.emit(
@@ -223,11 +230,7 @@ impl Lowerer<'_> {
 
                 self.switch_to(inside);
                 let depth = self.state().vars.len();
-                self.state().vars.push(Local {
-                    var: Some(name.id),
-                    reg: var,
-                    closes: false,
-                });
+                self.declare(Some(name.name), Some(name.id), var, false);
                 self.state().loops.push((exit, depth));
 
                 self.stats(ast.block(*body));
@@ -248,8 +251,10 @@ impl Lowerer<'_> {
                 }
 
                 self.state().loops.pop();
-                self.state().vars.truncate(depth);
+                self.leave(depth);
+
                 self.switch_to(exit);
+                self.leave(outer);
             }
             StatKind::GenericFor { names, exprs, body } => {
                 let iterator = self.reg();
@@ -259,11 +264,7 @@ impl Lowerer<'_> {
                 self.explist(exprs, &[iterator, state, control, closing], at);
 
                 let outer = self.state().vars.len();
-                self.state().vars.push(Local {
-                    var: None,
-                    reg: closing,
-                    closes: true,
-                });
+                self.declare(None, None, closing, true);
 
                 let head = self.new_block();
                 self.jump_to(head, at);
@@ -324,11 +325,7 @@ impl Lowerer<'_> {
                 let depth = self.state().vars.len();
 
                 for (name, reg) in names.iter().zip(results) {
-                    self.state().vars.push(Local {
-                        var: Some(name.id),
-                        reg,
-                        closes: false,
-                    });
+                    self.declare(Some(name.name), Some(name.id), reg, false);
                 }
 
                 self.state().loops.push((exit, depth));
@@ -338,9 +335,10 @@ impl Lowerer<'_> {
                 self.jump_to(head, at);
 
                 self.state().loops.pop();
-                self.state().vars.truncate(depth);
+                self.leave(depth);
+
                 self.switch_to(exit);
-                self.state().vars.truncate(outer);
+                self.leave(outer);
             }
             StatKind::Break => {
                 let (exit, depth) = *self.state().loops.last().expect("break inside a loop");
@@ -411,11 +409,7 @@ impl Lowerer<'_> {
                 let reg = self.reg();
 
                 // Declared before the body so that the function can call itself.
-                self.state().vars.push(Local {
-                    var: Some(name.id),
-                    reg,
-                    closes: false,
-                });
+                self.declare(Some(name.name), Some(name.id), reg, false);
                 self.closure(*func, reg, at);
             }
         }

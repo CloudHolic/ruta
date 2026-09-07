@@ -6,7 +6,10 @@ use ruta_syntax::ast::{Ast, FuncId, StatId, VarId, Vararg as SyntaxVararg};
 use ruta_syntax::scope::{Bindings, Capture};
 use ruta_syntax::token::Span;
 
-use crate::ir::{Block, BlockIdx, FuncIdx, Function, Instr, Op, Program, Reg, UpvalSource, Vararg};
+use crate::ir::{
+    Block, BlockIdx, FuncIdx, Function, Instr, Op, Position, Program, Reg, Slot, UpvalSource,
+    Vararg,
+};
 
 /// A slot that is in scope. The closing value a generic `for` binds has no name of its own.
 #[derive(Debug)]
@@ -15,6 +18,8 @@ pub(super) struct Local {
     pub(super) reg: Reg,
     /// A to-be-closed slot. A `return f()` inside its scope is not a tail call.
     pub(super) closes: bool,
+    /// Which entry of the function's slot list this fills.
+    slot: usize,
 }
 
 /// A goto whose label has not been lowered yet, so what dies on the way out is not known.
@@ -44,6 +49,8 @@ pub(super) struct FuncState {
     regs: u32,
     /// The locals in scope, innermost last. A name resolves to the last match.
     pub(super) vars: Vec<Local>,
+    /// Every declaration the body has made, the ones already out of scope included.
+    slots: Vec<Slot>,
     /// Where each enclosing loop sends a `break`, and the scope depth it leaves behind.
     pub(super) loops: Vec<(BlockIdx, usize)>,
     /// The block a label statement starts, made when the label is first named.
@@ -196,6 +203,45 @@ impl Lowerer<'_> {
         }
     }
 
+    /// Gives a declaration its register and its place in the scope stack.
+    pub(super) fn declare(
+        &mut self,
+        name: Option<&[u8]>,
+        var: Option<VarId>,
+        reg: Reg,
+        closes: bool,
+    ) {
+        let enters = self.position();
+        let state = self.state();
+        let number = state.vars.len() as u32;
+        let slot = state.slots.len();
+
+        state.slots.push(Slot {
+            name: name.map(Box::from),
+            reg,
+            number,
+            enters,
+            leaves: enters,
+        });
+        state.vars.push(Local {
+            var,
+            reg,
+            closes,
+            slot,
+        });
+    }
+
+    /// Leaves every scope above `depth`.
+    pub(super) fn leave(&mut self, depth: usize) {
+        let leaves = self.position();
+        let state = self.state();
+        let leaving: Vec<usize> = state.vars.drain(depth..).map(|local| local.slot).collect();
+
+        for slot in leaving {
+            state.slots[slot].leaves = leaves;
+        }
+    }
+
     pub(super) fn closure(&mut self, id: FuncId, dest: Reg, at: u32) {
         let ast = self.ast;
         let func = ast.func(id);
@@ -212,15 +258,15 @@ impl Lowerer<'_> {
         let index = self.enter_function(params, vararg, upvalues, func.span);
 
         if let Some(var) = func.self_var {
-            self.bind(var);
+            self.bind(b"self", var);
         }
 
         for param in func.params.iter() {
-            self.bind(param.id);
+            self.bind(param.name, param.id);
         }
 
         if let Some(SyntaxVararg::Named(var)) = func.vararg {
-            self.bind(var.id);
+            self.bind(var.name, var.id);
         }
 
         self.stats(body);
@@ -253,6 +299,16 @@ impl Lowerer<'_> {
             .depth
     }
 
+    fn position(&mut self) -> Position {
+        let state = self.state();
+        let block = state.current;
+
+        Position {
+            block,
+            instr: state.blocks[block.0 as usize].instrs.len() as u32,
+        }
+    }
+
     /// Claims this function's entry in the program, so that a child can claim the next one.
     fn enter_function(
         &mut self,
@@ -269,12 +325,14 @@ impl Lowerer<'_> {
             blocks: Vec::new(),
             regs: 0,
             upvalues,
+            slots: Vec::new(),
             span,
         });
         self.funcs.push(FuncState {
             index,
             regs: 0,
             vars: Vec::new(),
+            slots: Vec::new(),
             loops: Vec::new(),
             labels: Vec::new(),
             pending: Vec::new(),
@@ -286,6 +344,8 @@ impl Lowerer<'_> {
     }
 
     fn leave_function(&mut self) {
+        self.leave(0);
+
         let state = self.funcs.pop().expect("inside a function");
         debug_assert!(state.pending.is_empty());
 
@@ -293,6 +353,7 @@ impl Lowerer<'_> {
 
         func.blocks = state.blocks;
         func.regs = state.regs;
+        func.slots = state.slots;
     }
 
     /// The captured locals in scope, each with how deep it sits in the scope stack.
@@ -336,13 +397,9 @@ impl Lowerer<'_> {
     }
 
     /// Gives a parameter its register, in the order the frame receives them.
-    fn bind(&mut self, var: VarId) {
+    fn bind(&mut self, name: &[u8], var: VarId) {
         let reg = self.reg();
-        self.state().vars.push(Local {
-            var: Some(var),
-            reg,
-            closes: false,
-        });
+        self.declare(Some(name), Some(var), reg, false);
     }
 
     /// Reads the captures in the enclosing function's terms, which is where this runs.
