@@ -95,7 +95,7 @@ impl Lowerer<'_> {
                 }
             }
             StatKind::Do(body) => self.body(*body),
-            StatKind::Expr(value) => self.multi(*value, Results::Exactly(Box::new([]))),
+            StatKind::Expr(value) => self.multi(*value, Some(Box::new([]))),
             StatKind::If { arms, otherwise } => {
                 let join = self.new_block();
 

@@ -29,8 +29,8 @@ pub enum Const {
 pub enum Results {
     /// Into these registers, padded with nil when fewer arrive.
     Exactly(Box<[Reg]>),
-    /// However many there are. The next instruction consumes them.
-    Multi,
+    /// However many there are, starting here. The next instruction consumes them.
+    Multi(Reg),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

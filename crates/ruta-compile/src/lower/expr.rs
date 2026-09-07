@@ -72,7 +72,7 @@ impl Lowerer<'_> {
             }
             ExprKind::Table(fields) => self.table(fields, dest, at),
             ExprKind::Call { .. } | ExprKind::Method { .. } | ExprKind::Vararg => {
-                self.multi(id, Results::Exactly(Box::new([dest])))
+                self.multi(id, Some(Box::new([dest])))
             }
             ExprKind::Function(func) => self.closure(*func, dest, at),
         }
@@ -111,7 +111,7 @@ impl Lowerer<'_> {
 
         // The instruction fills the remaining destinations itself, nil where a value is missing.
         if self.is_multi(last) {
-            self.multi(last, Results::Exactly(tail.into()));
+            self.multi(last, Some(tail.into()));
 
             return;
         }
@@ -141,7 +141,7 @@ impl Lowerer<'_> {
         let mut regs: Vec<Reg> = rest.iter().map(|&value| self.operand(value)).collect();
 
         if self.is_multi(last) {
-            self.multi(last, Results::Multi);
+            self.multi(last, None);
 
             return (regs.into_boxed_slice(), true);
         }
@@ -159,17 +159,29 @@ impl Lowerer<'_> {
         )
     }
 
-    pub(super) fn multi(&mut self, id: ExprId, results: Results) {
+    /// Lowers a call or `...`, `results` is absent where the values run to the top of the frame
+    /// for the next instruction to consume.
+    pub(super) fn multi(&mut self, id: ExprId, results: Option<Box<[Reg]>>) {
         let ast = self.ast;
         let at = ast.expr(id).span.start;
 
         if matches!(ast.expr(id).kind, ExprKind::Vararg) {
+            let results = match results {
+                Some(dests) => Results::Exactly(dests),
+                None => Results::Multi(self.reg()),
+            };
+
             self.emit(Op::Vararg { results }, at);
 
             return;
         }
 
         let (callee, args, spread) = self.callable(id);
+        let results = match results {
+            Some(dests) => Results::Exactly(dests),
+            None => Results::Multi(callee),
+        };
+
         self.emit(
             Op::Call {
                 callee,
@@ -279,7 +291,7 @@ impl Lowerer<'_> {
             match field {
                 Field::Positional(value) => {
                     if position + 1 == fields.len() && self.is_multi(*value) {
-                        self.multi(*value, Results::Multi);
+                        self.multi(*value, None);
                         self.store(dest, first, mem::take(&mut pending), true, at);
 
                         return;

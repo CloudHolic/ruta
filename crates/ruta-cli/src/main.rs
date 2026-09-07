@@ -7,7 +7,7 @@ use std::panic;
 use std::process::ExitCode;
 use std::thread;
 
-use ruta_compile::lower;
+use ruta_compile::{allocate, lower};
 use ruta_syntax::error::Error;
 use ruta_syntax::line_index::LineIndex;
 use ruta_syntax::parser::parse_chunk;
@@ -49,7 +49,8 @@ fn parse_only(progname: &str, path: &str) -> ExitCode {
             .spawn_scoped(scope, || {
                 parse_chunk(&source).and_then(|ast| {
                     resolve(&ast).map(|bindings| {
-                        lower(&ast, &bindings);
+                        let mut program = lower(&ast, &bindings);
+                        allocate(&mut program);
                     })
                 })
             })?;
