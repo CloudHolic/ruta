@@ -22,16 +22,21 @@ pub(super) fn materialize(func: &mut Function) {
     func.regs = regs;
 }
 
-/// The row one instruction wants: what it reads from it, and what it leaves in it.
+/// The row one instruction wants: what it reads from it, and what it leaves in it,
+/// and whether it leaves values running to the top of the frame.
 #[derive(Debug)]
 struct Row {
     inputs: Vec<Reg>,
     outputs: Vec<Reg>,
+    open: bool,
 }
 
 impl Row {
     fn width(&self) -> u32 {
-        self.inputs.len().max(self.outputs.len()) as u32
+        // Values left pending still start somewhere, even where nothing else claims the row.
+        let least = usize::from(self.open);
+
+        self.inputs.len().max(self.outputs.len()).max(least) as u32
     }
 }
 
@@ -141,7 +146,11 @@ fn row(op: &Op) -> Option<Row> {
         _ => return None,
     };
 
-    Some(Row { inputs, outputs })
+    Some(Row {
+        inputs,
+        outputs,
+        open: produces_multi(op),
+    })
 }
 
 fn destinations(results: &Results) -> Vec<Reg> {
