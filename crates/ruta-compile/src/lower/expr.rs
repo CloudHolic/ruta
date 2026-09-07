@@ -74,7 +74,7 @@ impl Lowerer<'_> {
             ExprKind::Call { .. } | ExprKind::Method { .. } | ExprKind::Vararg => {
                 self.multi(id, Results::Exactly(Box::new([dest])))
             }
-            ExprKind::Function(_) => unimplemented!("closures"),
+            ExprKind::Function(func) => self.closure(*func, dest, at),
         }
     }
 
