@@ -9,6 +9,7 @@ name = "ruta"
 path = "src/main.rs"
 
 [dependencies]
+ruta-compile.workspace = true
 ruta-runtime.workspace = true
 ruta-syntax.workspace = true
 anyhow.workspace = true

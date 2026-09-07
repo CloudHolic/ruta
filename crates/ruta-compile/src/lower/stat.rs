@@ -31,9 +31,11 @@ impl Lowerer<'_> {
 
     fn body(&mut self, id: BlockId) {
         let ast = self.ast;
+        let block = ast.block(id);
         let depth = self.state().vars.len();
 
-        self.stats(ast.block(id));
+        self.stats(block);
+        self.close_upvals(depth, block.close_at);
         self.state().vars.truncate(depth);
     }
 
@@ -88,13 +90,7 @@ impl Lowerer<'_> {
                 self.explist(values, &dests, at);
 
                 for (place, src) in places.into_iter().zip(dests) {
-                    match place {
-                        Target::Local(dest) => self.emit(Op::Move { dest, src }, at),
-                        Target::Upvalue(index) => self.emit(Op::SetUpval { index, src }, at),
-                        Target::Index { object, key } => {
-                            self.emit(Op::SetIndex { object, key, src }, at)
-                        }
-                    }
+                    self.assign(place, src, at);
                 }
             }
             StatKind::Do(body) => self.body(*body),
@@ -147,7 +143,9 @@ impl Lowerer<'_> {
                 );
 
                 self.switch_to(inside);
-                self.state().loops.push(exit);
+
+                let depth = self.state().vars.len();
+                self.state().loops.push((exit, depth));
                 self.body(*body);
                 self.jump_to(head, at);
 
@@ -161,13 +159,14 @@ impl Lowerer<'_> {
 
                 let exit = self.new_block();
                 let depth = self.state().vars.len();
-                self.state().loops.push(exit);
+                self.state().loops.push((exit, depth));
 
                 // The condition is read inside the body's scope.
                 self.stats(ast.block(*body));
 
                 if !self.is_terminated() {
                     let cond = self.operand(*condition);
+                    self.close_upvals(depth, at);
                     self.emit(
                         Op::Branch {
                             cond,
@@ -229,9 +228,10 @@ impl Lowerer<'_> {
                     reg: var,
                     closes: false,
                 });
-                self.state().loops.push(exit);
+                self.state().loops.push((exit, depth));
 
                 self.stats(ast.block(*body));
+                self.close_upvals(depth, at);
 
                 if !self.is_terminated() {
                     self.emit(
@@ -331,8 +331,10 @@ impl Lowerer<'_> {
                     });
                 }
 
-                self.state().loops.push(exit);
+                self.state().loops.push((exit, depth));
                 self.stats(ast.block(*body));
+
+                self.close_upvals(depth, at);
                 self.jump_to(head, at);
 
                 self.state().loops.pop();
@@ -341,20 +343,21 @@ impl Lowerer<'_> {
                 self.state().vars.truncate(outer);
             }
             StatKind::Break => {
-                let exit = *self.state().loops.last().expect("break inside a loop");
+                let (exit, depth) = *self.state().loops.last().expect("break inside a loop");
+
+                self.close_upvals(depth, at);
                 self.emit(Op::Jump { to: exit }, at);
             }
             StatKind::Goto(_) => {
                 let target = self.bindings.target(id).expect("a goto reaches a label");
-                let block = self.label_block(target);
-
-                self.emit(Op::Jump { to: block }, at);
+                self.goto(target, at);
             }
             StatKind::Label(_) => {
                 let block = self.label_block(id);
 
                 self.jump_to(block, at);
                 self.switch_to(block);
+                self.reach_label(id, block);
             }
             StatKind::Return(values) => {
                 if let [value] = values.as_ref()
@@ -377,7 +380,44 @@ impl Lowerer<'_> {
                 let (values, spread) = self.explist_open(values);
                 self.emit(Op::Return { values, spread }, at);
             }
-            kind => unimplemented!("{kind:?}"),
+            StatKind::Function { target, func } => {
+                let place = self.target(*target);
+                let src = self.reg();
+
+                self.closure(*func, src, at);
+                self.assign(place, src, at);
+            }
+            StatKind::GlobalFunction { name, func } => {
+                let src = self.reg();
+                self.closure(*func, src, at);
+
+                let access = self
+                    .bindings
+                    .env(id)
+                    .expect("a global function reaches _ENV");
+                let env = self.access(access, at);
+                let key = self.reg();
+
+                self.emit(
+                    Op::Const {
+                        dest: key,
+                        value: Const::Str((*name).into()),
+                    },
+                    at,
+                );
+                self.emit(Op::DefineGlobal { env, key, src }, at);
+            }
+            StatKind::LocalFunction { name, func } => {
+                let reg = self.reg();
+
+                // Declared before the body so that the function can call itself.
+                self.state().vars.push(Local {
+                    var: Some(name.id),
+                    reg,
+                    closes: false,
+                });
+                self.closure(*func, reg, at);
+            }
         }
     }
 
@@ -412,6 +452,15 @@ impl Lowerer<'_> {
                 key: self.operand(*key),
             },
             kind => unreachable!("{kind:?} is not assignable"),
+        }
+    }
+
+    /// Stores a value where the target said to put it.
+    fn assign(&mut self, place: Target, src: Reg, at: u32) {
+        match place {
+            Target::Local(dest) => self.emit(Op::Move { dest, src }, at),
+            Target::Upvalue(index) => self.emit(Op::SetUpval { index, src }, at),
+            Target::Index { object, key } => self.emit(Op::SetIndex { object, key, src }, at),
         }
     }
 }

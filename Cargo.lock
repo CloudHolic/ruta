@@ -188,6 +188,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "clap",
+ "ruta-compile",
  "ruta-conformance",
  "ruta-runtime",
  "ruta-syntax",

@@ -70,6 +70,18 @@ impl Bindings {
         &self.funcs[id.index() + 1]
     }
 
+    /// Every local that some function captures. A declaration site belongs to one function,
+    /// so an id here is captured out of the function that declares it.
+    pub fn captured(&self) -> impl Iterator<Item = VarId> {
+        self.funcs
+            .iter()
+            .flat_map(|func| func.upvalues.iter())
+            .filter_map(|capture| match capture {
+                Capture::ParentLocal(var) => Some(*var),
+                Capture::ParentUpvalue(_) | Capture::Env => None,
+            })
+    }
+
     pub(super) fn new(exprs: usize, stats: usize, funcs: usize) -> Bindings {
         Bindings {
             uses: vec![None; exprs].into_boxed_slice(),

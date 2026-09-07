@@ -79,7 +79,7 @@ impl Lowerer<'_> {
     }
 
     /// A subexpression, in a register of its own.
-    /// Reading a variable copies it, becuase a call evaluated later in the same expression
+    /// Reading a variable copies it, because a call evaluated later in the same expression
     /// can assign to it.
     pub(super) fn operand(&mut self, id: ExprId) -> Reg {
         let dest = self.reg();
@@ -131,7 +131,7 @@ impl Lowerer<'_> {
     }
 
     /// Lowers a list whose values run to however many there are.
-    /// The registers hold the leading values, and `ture` means one more instruction left
+    /// The registers hold the leading values, and `true` means one more instruction left
     /// its results pending.
     pub(super) fn explist_open(&mut self, values: &[ExprId]) -> (Box<[Reg]>, bool) {
         let Some((&last, rest)) = values.split_last() else {
