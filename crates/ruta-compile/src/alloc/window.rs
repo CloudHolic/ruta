@@ -9,6 +9,24 @@ use std::mem;
 
 use crate::ir::{Function, Instr, Op, Reg, Results};
 
+/// The row one instruction wants: what it reads from it, and what it leaves in it,
+/// and whether it leaves values running to the top of the frame.
+#[derive(Debug)]
+pub(super) struct Row {
+    inputs: Vec<Reg>,
+    outputs: Vec<Reg>,
+    open: bool,
+}
+
+impl Row {
+    pub(super) fn width(&self) -> u32 {
+        // Values left pending still start somewhere, even where nothing else claims the row.
+        let least = usize::from(self.open);
+
+        self.inputs.len().max(self.outputs.len()).max(least) as u32
+    }
+}
+
 pub(super) fn materialize(func: &mut Function) {
     let mut blocks = mem::take(&mut func.blocks);
     let mut regs = func.regs;
@@ -22,22 +40,60 @@ pub(super) fn materialize(func: &mut Function) {
     func.regs = regs;
 }
 
-/// The row one instruction wants: what it reads from it, and what it leaves in it,
-/// and whether it leaves values running to the top of the frame.
-#[derive(Debug)]
-struct Row {
-    inputs: Vec<Reg>,
-    outputs: Vec<Reg>,
-    open: bool,
+/// Where the row an instruction wants begins, once it has one.
+pub(super) fn start(op: &Op) -> Option<Reg> {
+    match op {
+        Op::Call { callee, .. } | Op::TailCall { callee, .. } => Some(*callee),
+        Op::Return { values, .. } | Op::SetList { values, .. } => values.first().copied(),
+        Op::Vararg { results } => match results {
+            Results::Exactly(regs) => regs.first().copied(),
+            Results::Multi(reg) => Some(*reg),
+        },
+        _ => None,
+    }
 }
 
-impl Row {
-    fn width(&self) -> u32 {
-        // Values left pending still start somewhere, even where nothing else claims the row.
-        let least = usize::from(self.open);
+pub(super) fn row(op: &Op) -> Option<Row> {
+    let (inputs, outputs) = match op {
+        Op::Call {
+            callee,
+            args,
+            results,
+            ..
+        } => {
+            let mut inputs = vec![*callee];
+            inputs.extend_from_slice(args);
 
-        self.inputs.len().max(self.outputs.len()).max(least) as u32
-    }
+            (inputs, destinations(results))
+        }
+        Op::TailCall { callee, args, .. } => {
+            let mut inputs = vec![*callee];
+            inputs.extend_from_slice(args);
+
+            (inputs, Vec::new())
+        }
+        Op::Return { values, .. } | Op::SetList { values, .. } => (values.to_vec(), Vec::new()),
+        Op::Vararg { results } => (Vec::new(), destinations(results)),
+        _ => return None,
+    };
+
+    Some(Row {
+        inputs,
+        outputs,
+        open: produces_multi(op),
+    })
+}
+
+pub(super) fn produces_multi(op: &Op) -> bool {
+    matches!(
+        op,
+        Op::Call {
+            results: Results::Multi(_),
+            ..
+        } | Op::Vararg {
+            results: Results::Multi(_),
+        }
+    )
 }
 
 /// Values left pending run to the top of the frame, so the instruction that spreads them
@@ -122,37 +178,6 @@ fn place(run: Vec<Instr>, regs: &mut u32, out: &mut Vec<Instr>) {
     }
 }
 
-fn row(op: &Op) -> Option<Row> {
-    let (inputs, outputs) = match op {
-        Op::Call {
-            callee,
-            args,
-            results,
-            ..
-        } => {
-            let mut inputs = vec![*callee];
-            inputs.extend_from_slice(args);
-
-            (inputs, destinations(results))
-        }
-        Op::TailCall { callee, args, .. } => {
-            let mut inputs = vec![*callee];
-            inputs.extend_from_slice(args);
-
-            (inputs, Vec::new())
-        }
-        Op::Return { values, .. } | Op::SetList { values, .. } => (values.to_vec(), Vec::new()),
-        Op::Vararg { results } => (Vec::new(), destinations(results)),
-        _ => return None,
-    };
-
-    Some(Row {
-        inputs,
-        outputs,
-        open: produces_multi(op),
-    })
-}
-
 fn destinations(results: &Results) -> Vec<Reg> {
     match results {
         Results::Exactly(regs) => regs.to_vec(),
@@ -209,16 +234,4 @@ fn land(results: Results, base: Reg) -> Results {
 
 fn consecutive(from: u32, count: usize) -> Box<[Reg]> {
     (0..count as u32).map(|offset| Reg(from + offset)).collect()
-}
-
-fn produces_multi(op: &Op) -> bool {
-    matches!(
-        op,
-        Op::Call {
-            results: Results::Multi(_),
-            ..
-        } | Op::Vararg {
-            results: Results::Multi(_),
-        }
-    )
 }
