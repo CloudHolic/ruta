@@ -9,6 +9,8 @@ use std::mem;
 
 use crate::ir::{Function, Instr, Op, Reg, Results};
 
+use super::live;
+
 /// The row one instruction wants: what it reads from it, and what it leaves in it,
 /// and whether it leaves values running to the top of the frame.
 #[derive(Debug)]
@@ -27,13 +29,68 @@ impl Row {
     }
 }
 
+/// Which values a row can take straight from where they are made:
+/// a temporary written once, read only by the row, and not a declaration the frame pins to a register of its own.
+#[derive(Debug)]
+struct Direct {
+    defs: Vec<u32>,
+    uses: Vec<u32>,
+    pinned: Vec<bool>,
+}
+
+impl Direct {
+    fn of(func: &Function) -> Direct {
+        let regs = func.regs as usize;
+        let mut defs = vec![0; regs];
+        let mut uses = vec![0; regs];
+        let mut pinned = vec![false; regs];
+
+        for block in &func.blocks {
+            for instr in &block.instrs {
+                for reg in live::reads(&instr.op) {
+                    uses[reg.0 as usize] += 1;
+                }
+
+                for reg in live::writes(&instr.op) {
+                    defs[reg.0 as usize] += 1;
+                }
+            }
+        }
+
+        for slot in &func.slots {
+            pinned[slot.reg.0 as usize] = true;
+        }
+
+        Direct { defs, uses, pinned }
+    }
+
+    fn takes(&self, reg: Reg) -> bool {
+        let at = reg.0 as usize;
+
+        at < self.defs.len() && !self.pinned[at] && self.defs[at] == 1 && self.uses[at] == 1
+    }
+}
+
 pub(super) fn materialize(func: &mut Function) {
+    let direct = Direct::of(func);
+    let mut renames: Vec<Option<Reg>> = vec![None; func.regs as usize];
     let mut blocks = mem::take(&mut func.blocks);
     let mut regs = func.regs;
 
     for block in blocks.iter_mut() {
         let instrs = mem::take(&mut block.instrs);
-        block.instrs = rewrite(instrs, &mut regs);
+        block.instrs = rewrite(instrs, &mut regs, &direct, &mut renames);
+    }
+
+    // What a row took straight from its maker is written there in the first place.
+    for block in blocks.iter_mut() {
+        for instr in block.instrs.iter_mut() {
+            for reg in live::registers(&mut instr.op) {
+                if let Some(to) = renames.get(reg.0 as usize).copied().flatten() {
+                    *reg = to;
+                }
+            }
+        }
     }
 
     func.blocks = blocks;
@@ -98,7 +155,12 @@ pub(super) fn produces_multi(op: &Op) -> bool {
 
 /// Values left pending run to the top of the frame, so the instruction that spreads them
 /// and every producer feeding it settle their rows together.
-fn rewrite(instrs: Vec<Instr>, regs: &mut u32) -> Vec<Instr> {
+fn rewrite(
+    instrs: Vec<Instr>,
+    regs: &mut u32,
+    direct: &Direct,
+    renames: &mut [Option<Reg>],
+) -> Vec<Instr> {
     let mut out = Vec::with_capacity(instrs.len());
     let mut run: Vec<Instr> = Vec::new();
 
@@ -107,7 +169,7 @@ fn rewrite(instrs: Vec<Instr>, regs: &mut u32) -> Vec<Instr> {
         run.push(instr);
 
         if !pending {
-            place(mem::take(&mut run), regs, &mut out);
+            place(mem::take(&mut run), regs, direct, renames, &mut out);
         }
     }
 
@@ -116,7 +178,13 @@ fn rewrite(instrs: Vec<Instr>, regs: &mut u32) -> Vec<Instr> {
     out
 }
 
-fn place(run: Vec<Instr>, regs: &mut u32, out: &mut Vec<Instr>) {
+fn place(
+    run: Vec<Instr>,
+    regs: &mut u32,
+    direct: &Direct,
+    renames: &mut [Option<Reg>],
+    out: &mut Vec<Instr>,
+) {
     let rows: Vec<Option<Row>> = run.iter().map(|instr| row(&instr.op)).collect();
 
     if rows.len() == 1 && rows[0].is_none() {
@@ -146,13 +214,17 @@ fn place(run: Vec<Instr>, regs: &mut u32, out: &mut Vec<Instr>) {
         let row = rows[at].as_ref().expect("a run holdds rows only");
 
         for (offset, src) in row.inputs.iter().enumerate() {
+            let dest = Reg(bases[at].0 + offset as u32);
+
+            if direct.takes(*src) && renames[src.0 as usize].is_none() {
+                renames[src.0 as usize] = Some(dest);
+                continue;
+            }
+
             out.push(Instr {
-                op: Op::Move {
-                    dest: Reg(bases[at].0 + offset as u32),
-                    src: *src,
-                },
+                op: Op::Move { dest, src: *src },
                 at: lines[at],
-            })
+            });
         }
     }
 

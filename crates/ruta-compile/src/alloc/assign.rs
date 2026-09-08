@@ -1,6 +1,6 @@
 //! Handing out the registers a frame holds.
 
-use crate::ir::{Function, Op, Reg, Results};
+use crate::ir::{Function, Reg};
 
 use super::live::{self, Span};
 use super::window;
@@ -58,7 +58,7 @@ pub(super) fn assign(func: &mut Function) -> Vec<Reg> {
 
     for block in func.blocks.iter_mut() {
         for instr in block.instrs.iter_mut() {
-            for reg in registers(&mut instr.op) {
+            for reg in live::registers(&mut instr.op) {
                 *reg = places[reg.0 as usize];
             }
         }
@@ -170,76 +170,5 @@ fn lowest(taken: &mut Vec<Option<u32>>, base: u32, item: &Item) -> u32 {
             Some(busy) => at = busy + 1,
             None => return at,
         }
-    }
-}
-
-fn registers(op: &mut Op) -> Vec<&mut Reg> {
-    match op {
-        Op::Const { dest, .. }
-        | Op::GetUpval { dest, .. }
-        | Op::Closure { dest, .. }
-        | Op::NewTable { dest, .. } => vec![dest],
-        Op::Move { dest, src } => vec![dest, src],
-        Op::SetUpval { src, .. } => vec![src],
-        Op::CloseUpvals { from } => vec![from],
-        Op::Vararg { results } => landed(results),
-        Op::Index { dest, object, key } => vec![dest, object, key],
-        Op::SetIndex { object, key, src }
-        | Op::DefineGlobal {
-            env: object,
-            key,
-            src,
-        } => {
-            vec![object, key, src]
-        }
-        Op::SetList { table, values, .. } => {
-            let mut regs = vec![table];
-            regs.extend(values.iter_mut());
-            regs
-        }
-        Op::Unary { dest, operand, .. } => vec![dest, operand],
-        Op::Binary {
-            dest, left, right, ..
-        } => vec![dest, left, right],
-        Op::Call {
-            callee,
-            args,
-            results,
-            ..
-        } => {
-            let mut regs = vec![callee];
-            regs.extend(args.iter_mut());
-            regs.extend(landed(results));
-            regs
-        }
-        Op::TailCall { callee, args, .. } => {
-            let mut regs = vec![callee];
-            regs.extend(args.iter_mut());
-            regs
-        }
-        Op::Branch { cond, .. } => vec![cond],
-        Op::Return { values, .. } => values.iter_mut().collect(),
-        Op::ForPrep {
-            control,
-            limit,
-            step,
-            var,
-            ..
-        }
-        | Op::ForLoop {
-            control,
-            limit,
-            step,
-            var,
-            ..
-        } => vec![control, limit, step, var],
-        Op::Jump { .. } => Vec::new(),
-    }
-}
-
-fn landed(results: &mut Results) -> Vec<&mut Reg> {
-    match results {
-        Results::Exactly(regs) => regs.iter_mut().collect(),
-        Results::Multi(reg) => vec![reg],
     }
 }

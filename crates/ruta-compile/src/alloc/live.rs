@@ -157,6 +157,70 @@ pub(super) fn writes(op: &Op) -> Vec<Reg> {
     }
 }
 
+pub(super) fn registers(op: &mut Op) -> Vec<&mut Reg> {
+    match op {
+        Op::Const { dest, .. }
+        | Op::GetUpval { dest, .. }
+        | Op::Closure { dest, .. }
+        | Op::NewTable { dest, .. } => vec![dest],
+        Op::Move { dest, src } => vec![dest, src],
+        Op::SetUpval { src, .. } => vec![src],
+        Op::CloseUpvals { from } => vec![from],
+        Op::Vararg { results } => landed(results),
+        Op::Index { dest, object, key } => vec![dest, object, key],
+        Op::SetIndex { object, key, src }
+        | Op::DefineGlobal {
+            env: object,
+            key,
+            src,
+        } => {
+            vec![object, key, src]
+        }
+        Op::SetList { table, values, .. } => {
+            let mut regs = vec![table];
+            regs.extend(values.iter_mut());
+            regs
+        }
+        Op::Unary { dest, operand, .. } => vec![dest, operand],
+        Op::Binary {
+            dest, left, right, ..
+        } => vec![dest, left, right],
+        Op::Call {
+            callee,
+            args,
+            results,
+            ..
+        } => {
+            let mut regs = vec![callee];
+            regs.extend(args.iter_mut());
+            regs.extend(landed(results));
+            regs
+        }
+        Op::TailCall { callee, args, .. } => {
+            let mut regs = vec![callee];
+            regs.extend(args.iter_mut());
+            regs
+        }
+        Op::Branch { cond, .. } => vec![cond],
+        Op::Return { values, .. } => values.iter_mut().collect(),
+        Op::ForPrep {
+            control,
+            limit,
+            step,
+            var,
+            ..
+        }
+        | Op::ForLoop {
+            control,
+            limit,
+            step,
+            var,
+            ..
+        } => vec![control, limit, step, var],
+        Op::Jump { .. } => Vec::new(),
+    }
+}
+
 fn extend(spans: &mut [Option<Span>], reg: u32, point: u32) {
     match &mut spans[reg as usize] {
         Some(span) => {
@@ -239,4 +303,11 @@ fn solve(func: &Function, upward: &[Bits], written: &[Bits], regs: usize) -> Vec
     }
 
     incoming
+}
+
+fn landed(results: &mut Results) -> Vec<&mut Reg> {
+    match results {
+        Results::Exactly(regs) => regs.iter_mut().collect(),
+        Results::Multi(reg) => vec![reg],
+    }
 }
