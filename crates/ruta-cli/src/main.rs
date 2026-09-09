@@ -7,7 +7,7 @@ use std::panic;
 use std::process::ExitCode;
 use std::thread;
 
-use ruta_compile::{allocate, lower};
+use ruta_compile::{Source, allocate, emit, lower};
 use ruta_syntax::error::Error;
 use ruta_syntax::line_index::LineIndex;
 use ruta_syntax::parser::parse_chunk;
@@ -50,8 +50,18 @@ fn parse_only(progname: &str, path: &str) -> ExitCode {
                 parse_chunk(&source).and_then(|ast| {
                     resolve(&ast).and_then(|bindings| {
                         let mut program = lower(&ast, &bindings)?;
+                        allocate(&mut program)?;
 
-                        allocate(&mut program)
+                        let lines = LineIndex::new(&source);
+                        emit(
+                            &program,
+                            &Source {
+                                lines: &lines,
+                                name: path.as_bytes(),
+                            },
+                        );
+
+                        Ok(())
                     })
                 })
             })?;
