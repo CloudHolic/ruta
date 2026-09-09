@@ -3,6 +3,7 @@
 mod assign;
 mod frame;
 mod live;
+mod order;
 mod window;
 
 pub use frame::allocate;
