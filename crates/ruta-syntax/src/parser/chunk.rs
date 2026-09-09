@@ -168,6 +168,7 @@ impl<'a> Parser<'a> {
 pub fn parse_chunk(source: &[u8]) -> Result<Ast<'_>, Error> {
     let mut parser = Parser::new(source)?;
     let main = parser.chunk()?;
+    let ends = parser.current.span.end;
 
-    Ok(parser.builder.finish(main))
+    Ok(parser.builder.finish(main, ends))
 }

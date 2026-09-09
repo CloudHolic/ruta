@@ -1,11 +1,15 @@
 //! Statements, and the scope a block gives its locals.
 
 use ruta_syntax::ast::{Attribute, Block, BlockId, ExprId, ExprKind, StatId, StatKind};
+use ruta_syntax::error::{Error, ErrorKind};
 use ruta_syntax::scope::{Access, Binding};
 
 use crate::ir::{BinOp, Const, Op, Reg, Results};
 
 use super::func::Lowerer;
+
+/// The widest count a `Return` can carry.
+const RETURNS: usize = 254;
 
 /// Where an assignment puts its value, worked out before any value is evaluated.
 #[derive(Debug, Clone, Copy)]
@@ -357,7 +361,21 @@ impl Lowerer<'_> {
                 self.switch_to(block);
                 self.reach_label(id, block);
             }
-            StatKind::Return(values) => {
+            StatKind::Return { values, follows } => {
+                if values.len() > RETURNS {
+                    let function = self.enclosing();
+
+                    self.refuse(Error {
+                        kind: ErrorKind::TooMany {
+                            what: "returns",
+                            limit: 255,
+                            function,
+                        },
+                        at: follows.at,
+                        near: follows.near.clone(),
+                    });
+                }
+
                 if let [value] = values.as_ref()
                     && self.is_call(*value)
                     && !self.has_close()

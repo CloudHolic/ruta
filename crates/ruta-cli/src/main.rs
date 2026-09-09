@@ -48,9 +48,10 @@ fn parse_only(progname: &str, path: &str) -> ExitCode {
             .stack_size(PARSE_STACK)
             .spawn_scoped(scope, || {
                 parse_chunk(&source).and_then(|ast| {
-                    resolve(&ast).map(|bindings| {
-                        let mut program = lower(&ast, &bindings);
-                        allocate(&mut program);
+                    resolve(&ast).and_then(|bindings| {
+                        let mut program = lower(&ast, &bindings)?;
+
+                        allocate(&mut program)
                     })
                 })
             })?;

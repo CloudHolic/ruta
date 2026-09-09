@@ -169,7 +169,7 @@ impl<'src> Resolver<'_, 'src> {
                 }
             }
             StatKind::Do(body) => self.block(*body)?,
-            StatKind::Return(values) => {
+            StatKind::Return { values, .. } => {
                 for &value in values.iter() {
                     self.expr(value)?;
                 }

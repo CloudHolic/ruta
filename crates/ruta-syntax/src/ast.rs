@@ -1,5 +1,6 @@
 //! The syntax tree.
 
+use crate::error::Near;
 use crate::token::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,6 +44,13 @@ pub struct Var<'a> {
     pub id: VarId,
 }
 
+/// A token a message names without the parser having consumed it.
+#[derive(Debug)]
+pub struct Follows {
+    pub at: u32,
+    pub near: Near,
+}
+
 #[derive(Debug)]
 pub struct Ast<'a> {
     blocks: Vec<Block>,
@@ -50,6 +58,7 @@ pub struct Ast<'a> {
     stats: Vec<Stat<'a>>,
     funcs: Vec<Func<'a>>,
     main: BlockId,
+    ends: u32,
 }
 
 impl<'a> Ast<'a> {
@@ -84,6 +93,10 @@ impl<'a> Ast<'a> {
 
     pub fn func_count(&self) -> usize {
         self.funcs.len()
+    }
+
+    pub fn ends(&self) -> u32 {
+        self.ends
     }
 }
 
@@ -210,7 +223,10 @@ pub enum StatKind<'a> {
         arms: Box<[(ExprId, BlockId)]>,
         otherwise: Option<BlockId>,
     },
-    Return(Box<[ExprId]>),
+    Return {
+        values: Box<[ExprId]>,
+        follows: Follows,
+    },
     Break,
     Goto(&'a [u8]),
     Label(&'a [u8]),
@@ -334,13 +350,14 @@ impl<'a> Builder<'a> {
         &self.exprs[id.0 as usize].kind
     }
 
-    pub(crate) fn finish(self, main: BlockId) -> Ast<'a> {
+    pub(crate) fn finish(self, main: BlockId, ends: u32) -> Ast<'a> {
         Ast {
             blocks: self.blocks,
             exprs: self.exprs,
             stats: self.stats,
             funcs: self.funcs,
             main,
+            ends,
         }
     }
 }

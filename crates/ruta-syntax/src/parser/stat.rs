@@ -1,6 +1,6 @@
 //! Statements and blocks.
 
-use crate::ast::{Attribute, BlockId, ExprId, ExprKind, StatId, StatKind, VarName};
+use crate::ast::{Attribute, BlockId, ExprId, ExprKind, Follows, StatId, StatKind, VarName};
 use crate::error::{Error, ErrorKind};
 use crate::token::TokenKind;
 
@@ -146,12 +146,23 @@ impl<'a> Parser<'a> {
         } else {
             self.expr_list()?
         };
+
+        // The reference raises the limit on return values here, so the token a message naems is the one standing after them.
+        let follows = Follows {
+            at: self.current.span.end,
+            near: self.near(),
+        };
+
         self.eat_byte(b';')?;
 
         let span = self.span_from(start);
-        Ok(self
-            .builder
-            .stat(StatKind::Return(values.into_boxed_slice()), span))
+        Ok(self.builder.stat(
+            StatKind::Return {
+                values: values.into_boxed_slice(),
+                follows,
+            },
+            span,
+        ))
     }
 
     /// `ifstat -> 'if' expr 'then' block { 'elseif' expr 'then' block } ['else' block] 'end'`

@@ -52,6 +52,11 @@ pub enum ErrorKind {
     BreakOutsideLoop,
     GlobalToBeClosed,
     StackOverflow,
+    TooMany {
+        what: &'static str,
+        limit: u32,
+        function: Option<u32>,
+    },
     ConstAssignment(Box<[u8]>),
     VariableNotDeclared(Box<[u8]>),
     EnvIsGlobal(Box<[u8]>),
@@ -151,6 +156,18 @@ impl Error {
             ErrorKind::BreakOutsideLoop => "break outside loop".to_owned(),
             ErrorKind::GlobalToBeClosed => "global variables cannot be to-be-closed".to_owned(),
             ErrorKind::StackOverflow => "stack overflow".to_owned(),
+            ErrorKind::TooMany {
+                what,
+                limit,
+                function,
+            } => {
+                let place = match function {
+                    None => "main function".to_owned(),
+                    Some(at) => format!("function at line {}", lines.line_of(*at)),
+                };
+
+                format!("too many {what} (limit is {limit}) in {place}")
+            }
             ErrorKind::ConstAssignment(name) => format!(
                 "attempt to assign to const variable '{}'",
                 String::from_utf8_lossy(name)

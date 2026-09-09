@@ -3,6 +3,7 @@
 use std::mem;
 
 use ruta_syntax::ast::{Ast, FuncId, StatId, VarId, Vararg as SyntaxVararg};
+use ruta_syntax::error::Error;
 use ruta_syntax::scope::{Bindings, Capture};
 use ruta_syntax::token::Span;
 
@@ -69,11 +70,28 @@ pub(super) struct Lowerer<'a> {
     funcs: Vec<FuncState>,
     /// Every local a nested function captures, so that leaving its scope closes it.
     captured: Vec<VarId>,
+    /// The first limit the chunk crossed.
+    refusal: Option<Error>,
 }
 
 impl Lowerer<'_> {
     pub(super) fn state(&mut self) -> &mut FuncState {
         self.funcs.last_mut().expect("inside a function")
+    }
+
+    /// Where the function being lowered begins, or `None` for the chunk itself.
+    pub(super) fn enclosing(&self) -> Option<u32> {
+        let index = self.funcs.last().expect("inside a function").index;
+
+        (index != 0).then(|| self.program.funcs[index].span.start)
+    }
+
+    /// Keeps the first limit crossed. Lowering runs on so that the rest of the tree is still walked,
+    /// and nothing reads what it produces.
+    pub(super) fn refuse(&mut self, error: Error) {
+        if self.refusal.is_none() {
+            self.refusal = Some(error);
+        }
     }
 
     pub(super) fn reg(&mut self) -> Reg {
@@ -380,7 +398,12 @@ impl Lowerer<'_> {
         let ast = self.ast;
         let main = ast.main_block();
 
-        self.enter_function(0, Vararg::Anonymous, vec![UpvalSource::Env], main.span);
+        self.enter_function(
+            0,
+            Vararg::Anonymous,
+            vec![UpvalSource::Env],
+            Span::new(main.span.start, ast.ends()),
+        );
         self.stats(main);
 
         if !self.is_terminated() {
@@ -419,17 +442,22 @@ impl Lowerer<'_> {
     }
 }
 
-pub fn lower(ast: &Ast<'_>, bindings: &Bindings) -> Program {
+pub fn lower(ast: &Ast<'_>, bindings: &Bindings) -> Result<Program, Error> {
     let mut lowerer = Lowerer {
         ast,
         bindings,
         captured: bindings.captured().collect(),
         program: Program::default(),
         funcs: Vec::new(),
+        refusal: None,
     };
 
     lowerer.main();
-    lowerer.program
+
+    match lowerer.refusal {
+        Some(error) => Err(error),
+        None => Ok(lowerer.program),
+    }
 }
 
 /// The lowest register a captured local occupies above `depth`.

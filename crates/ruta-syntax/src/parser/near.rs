@@ -25,7 +25,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn near(&self) -> Near {
+    pub(super) fn near(&self) -> Near {
         match &self.current.kind {
             TokenKind::Eof => Near::Eof,
             // A NUL byte token carries the same value as the marker for "no token at all".

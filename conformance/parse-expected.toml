@@ -1,25 +1,10 @@
 # Corpus entries where `ruta -p` and `luac -p` are expected to disagree.
 #
-# Every one of these is a case the reference rejects and ruta accepts, because the check
-# belongs to a pass that does not exist yet. None of them is a parser defect. The parse
-# scoreboard reads this file so that it can tell a known gap from a regression: an entry
+# The scoreboard reads this file so that it can tell a known gap from a regression: an entry
 # listed here and still failing is expected, an entry listed here that starts passing should
 # be removed, and a mismatch that is *not* listed here is a bug.
 #
-# 1 entry, against a corpus of 602. Recorded 2026-08-26 at the end of stage 1; the entries
-# for global declarations and read-only assignment came off when stage 2 resolved names, and
-# the label and goto ones when it settled jumps. What is left is a code generation limit.
-#
-# `stage` is the stage that closes the gap. `error` is what the reference says, with the
-# chunk name and line elided.
+# 0 entries, against a corpus of 602. The last one came off at stage 4F, when code generation
+# gained the limits the reference reports from its parser.
 
-# --- Stage 4: code generation limits -----------------------------------------------
-#
-# PUC-Lua is a single-pass compiler, so its register and slot limits are reported by the
-# parser. ruta separates code generation from parsing, so this class of error cannot be
-# raised until stage 4 exists. This is the one case docs/roadmap.md warns about under
-# "what the parse scoreboard cannot cover".
-
-[cases."calls/017.lua"]
-stage = 4
-error = "too many returns (limit is 255) in main function"
+[cases]
