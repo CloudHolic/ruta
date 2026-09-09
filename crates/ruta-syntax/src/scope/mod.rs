@@ -6,5 +6,5 @@ mod label;
 mod resolver;
 mod stat;
 
-pub use binding::{Access, Binding, Bindings, Capture, FunctionBindings};
+pub use binding::{Access, Binding, Bindings, Capture, FunctionBindings, Upvalue};
 pub use resolver::resolve;

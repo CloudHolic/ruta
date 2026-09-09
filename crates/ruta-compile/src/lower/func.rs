@@ -4,12 +4,12 @@ use std::mem;
 
 use ruta_syntax::ast::{Ast, FuncId, StatId, VarId, Vararg as SyntaxVararg};
 use ruta_syntax::error::Error;
-use ruta_syntax::scope::{Bindings, Capture};
+use ruta_syntax::scope::{Bindings, Capture, Upvalue};
 use ruta_syntax::token::Span;
 
 use crate::ir::{
-    Block, BlockIdx, FuncIdx, Function, Instr, Op, Position, Program, Reg, Slot, UpvalSource,
-    Vararg,
+    Block, BlockIdx, FuncIdx, Function, Instr, Op, Position, Program, Reg, Slot, Upval,
+    UpvalSource, Vararg,
 };
 
 /// A slot that is in scope. The closing value a generic `for` binds has no name of its own.
@@ -332,7 +332,7 @@ impl Lowerer<'_> {
         &mut self,
         params: u16,
         vararg: Vararg,
-        upvalues: Vec<UpvalSource>,
+        upvalues: Vec<Upval>,
         span: Span,
     ) -> usize {
         let index = self.program.funcs.len();
@@ -392,7 +392,10 @@ impl Lowerer<'_> {
     fn main(&mut self) {
         debug_assert!(matches!(
             self.bindings.main().upvalues.as_ref(),
-            [Capture::Env]
+            [Upvalue {
+                capture: Capture::Env,
+                ..
+            }]
         ));
 
         let ast = self.ast;
@@ -401,7 +404,10 @@ impl Lowerer<'_> {
         self.enter_function(
             0,
             Vararg::Anonymous,
-            vec![UpvalSource::Env],
+            vec![Upval {
+                name: b"_ENV".as_slice().into(),
+                source: UpvalSource::Env,
+            }],
             Span::new(main.span.start, ast.ends()),
         );
         self.stats(main);
@@ -426,17 +432,20 @@ impl Lowerer<'_> {
     }
 
     /// Reads the captures in the enclosing function's terms, which is where this runs.
-    fn upvalues(&mut self, id: FuncId) -> Vec<UpvalSource> {
+    fn upvalues(&mut self, id: FuncId) -> Vec<Upval> {
         let bindings = self.bindings;
 
         bindings
             .function(id)
             .upvalues
             .iter()
-            .map(|capture| match capture {
-                Capture::ParentLocal(var) => UpvalSource::ParentLocal(self.lookup(*var)),
-                Capture::ParentUpvalue(index) => UpvalSource::ParentUpval(*index),
-                Capture::Env => UpvalSource::Env,
+            .map(|upvalue| Upval {
+                name: upvalue.name.clone(),
+                source: match upvalue.capture {
+                    Capture::ParentLocal(var) => UpvalSource::ParentLocal(self.lookup(var)),
+                    Capture::ParentUpvalue(index) => UpvalSource::ParentUpval(index),
+                    Capture::Env => UpvalSource::Env,
+                },
             })
             .collect()
     }

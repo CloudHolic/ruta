@@ -28,8 +28,8 @@ pub fn allocate(program: &mut Program) -> Result<(), Error> {
         // A nested function names a register of the one that makes it, so it learns the answer here.
         // Functions come parent first, so the answer is always ready.
         for child in children(&program.funcs[index]) {
-            for source in program.funcs[child.0 as usize].upvalues.iter_mut() {
-                if let UpvalSource::ParentLocal(reg) = source {
+            for upvalue in program.funcs[child.0 as usize].upvalues.iter_mut() {
+                if let UpvalSource::ParentLocal(reg) = &mut upvalue.source {
                     *reg = places[reg.0 as usize];
                 }
             }

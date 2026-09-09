@@ -3,7 +3,7 @@
 use crate::ast::StatId;
 use crate::error::{Error, ErrorKind};
 
-use super::binding::Capture;
+use super::binding::{Capture, Upvalue};
 use super::resolver::{Resolver, error};
 
 #[derive(Debug)]
@@ -140,7 +140,10 @@ impl<'src> Resolver<'_, 'src> {
         let upvalues = frame
             .upvalues
             .into_iter()
-            .map(|(_, capture)| capture)
+            .map(|(name, capture)| Upvalue {
+                name: name.into(),
+                capture,
+            })
             .collect();
 
         self.bindings.set_upvalues(frame.index, upvalues);

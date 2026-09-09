@@ -29,10 +29,17 @@ pub enum Capture {
     Env,
 }
 
+/// One upvalue: the name the body first asked for it by, and where its value comes from.
+#[derive(Debug)]
+pub struct Upvalue {
+    pub name: Box<[u8]>,
+    pub capture: Capture,
+}
+
 #[derive(Debug, Default)]
 pub struct FunctionBindings {
     /// One entry per upvalue, in the order the body first referred to it.
-    pub upvalues: Box<[Capture]>,
+    pub upvalues: Box<[Upvalue]>,
 }
 
 /// Every name in a chunk, answered.
@@ -76,8 +83,8 @@ impl Bindings {
         self.funcs
             .iter()
             .flat_map(|func| func.upvalues.iter())
-            .filter_map(|capture| match capture {
-                Capture::ParentLocal(var) => Some(*var),
+            .filter_map(|upvalue| match upvalue.capture {
+                Capture::ParentLocal(var) => Some(var),
                 Capture::ParentUpvalue(_) | Capture::Env => None,
             })
     }
@@ -103,7 +110,7 @@ impl Bindings {
         self.envs[stat.index()] = Some(access);
     }
 
-    pub(super) fn set_upvalues(&mut self, index: usize, upvalues: Box<[Capture]>) {
+    pub(super) fn set_upvalues(&mut self, index: usize, upvalues: Box<[Upvalue]>) {
         self.funcs[index].upvalues = upvalues;
     }
 }

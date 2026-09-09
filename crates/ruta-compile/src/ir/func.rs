@@ -42,7 +42,7 @@ pub struct Function {
     /// How many virtual registers were handed out. Register allocation maps these down.
     pub regs: u32,
     /// One entry per upvalue, in the order the body refers to them.
-    pub upvalues: Vec<UpvalSource>,
+    pub upvalues: Vec<Upval>,
     /// One entry per declaration, in the order the body declares them.
     pub slots: Vec<Slot>,
     /// The whole body, for `in function at line %d` in a compile error.
@@ -57,6 +57,14 @@ pub enum Vararg {
     Anonymous,
     /// `...t` - the extra arguments arrive as a table, bound like a parameter.
     Table,
+}
+
+/// One upvalue, as the prototype will carry it. The source is what allocation rewrites;
+/// the name is only ever read.
+#[derive(Debug)]
+pub struct Upval {
+    pub name: Box<[u8]>,
+    pub source: UpvalSource,
 }
 
 /// Where an upvalue's value comes from, named in the enclosing function's terms.
