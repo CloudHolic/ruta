@@ -4,7 +4,7 @@ use ruta_syntax::error::{Error, ErrorKind, Near};
 
 use crate::ir::{FuncIdx, Function, Op, Program, UpvalSource};
 
-use super::{assign, order, window};
+use super::{assign, window};
 
 /// A register index is one byte wide, and the widest value marks a count that runs to the top of the frame.
 const REGISTERS: u32 = 255;
@@ -19,7 +19,6 @@ pub fn allocate(program: &mut Program) -> Result<(), Error> {
         let func = &mut program.funcs[index];
 
         window::materialize(func);
-        order::linearize(func);
 
         let places = assign::assign(func);
 

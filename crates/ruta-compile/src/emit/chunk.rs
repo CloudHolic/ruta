@@ -64,11 +64,17 @@ fn prototype(program: &Program, index: usize, source: &Source<'_>) -> Prototype 
             .slots
             .iter()
             .filter_map(|slot| {
-                Some(LocalVar {
-                    name: slot.name.clone()?,
+                let name = slot.name.clone()?;
+                let start_pc = spot(&spots, slot.enters);
+                let end_pc = spot(&spots, slot.leaves);
+
+                // A goto over a declaration to the end of its block leaves the declaration
+                // where nothing reaches it, and no pc is then inside the scope.
+                (start_pc <= end_pc).then_some(LocalVar {
+                    name,
                     register: slot.reg.0 as u8,
-                    start_pc: spot(&spots, slot.enters),
-                    end_pc: spot(&spots, slot.leaves),
+                    start_pc,
+                    end_pc,
                 })
             })
             .collect(),
@@ -199,9 +205,7 @@ fn tail(op: &Op, before: Option<&Op>, next: Option<BlockIdx>) -> Vec<(ByteOp, Op
 }
 
 fn spot(spots: &[Vec<u32>], at: Position) -> u32 {
-    let block = &spots[at.block.0 as usize];
-
-    block[(at.instr as usize).min(block.len() - 1)]
+    spots[at.block.0 as usize][at.instr as usize]
 }
 
 fn defined(index: usize, func: &Function, source: &Source<'_>) -> u32 {
