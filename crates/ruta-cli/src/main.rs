@@ -8,6 +8,7 @@ use std::process::ExitCode;
 use std::thread;
 
 use ruta_compile::{Source, allocate, emit, lower};
+use ruta_runtime::vm::Vm;
 use ruta_syntax::error::Error;
 use ruta_syntax::line_index::LineIndex;
 use ruta_syntax::parser::parse_chunk;
@@ -26,6 +27,7 @@ fn main() -> ExitCode {
 
     match (args.next().as_deref(), args.next(), args.next()) {
         (Some("-p"), Some(path), None) => parse_only(&progname, &path),
+        (Some(path), None, None) if !path.starts_with('-') => execute(&progname, &path.to_owned()),
         _ => {
             report(format!("{progname}: usage: ruta -p <file>").as_bytes());
             ExitCode::FAILURE
@@ -77,6 +79,73 @@ fn parse_only(progname: &str, path: &str) -> ExitCode {
             report_error(progname, path, &error, &source);
             ExitCode::FAILURE
         }
+        Err(error) => {
+            report(format!("{progname}: cannot start the parser thread: {error}").as_bytes());
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Compiles a file and runs it.
+fn execute(progname: &str, path: &str) -> ExitCode {
+    let source = match fs::read(path) {
+        Ok(bytes) => strip_prelude(&bytes),
+        Err(error) => {
+            report(format!("{progname}: cannot open {path}: {error}").as_bytes());
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let outcome: io::Result<ExitCode> = thread::scope(|scope| {
+        let worker = thread::Builder::new()
+            .stack_size(PARSE_STACK)
+            .spawn_scoped(scope, || {
+                let built = parse_chunk(&source).and_then(|ast| {
+                    resolve(&ast).and_then(|bindings| {
+                        let mut program = lower(&ast, &bindings)?;
+                        allocate(&mut program)?;
+
+                        let lines = LineIndex::new(&source);
+
+                        Ok(emit(
+                            &program,
+                            &Source {
+                                lines: &lines,
+                                name: format!("@{path}").as_bytes(),
+                            },
+                        ))
+                    })
+                });
+
+                let prototype = match built {
+                    Ok(prototype) => prototype,
+                    Err(error) => {
+                        report_error(progname, path, &error, &source);
+                        return ExitCode::FAILURE;
+                    }
+                };
+
+                let mut vm = Vm::new();
+
+                match vm.run(prototype) {
+                    Ok(()) => ExitCode::SUCCESS,
+                    Err(error) => {
+                        let mut line = format!("{progname}: ").into_bytes();
+                        line.extend_from_slice(&vm.text(error.value));
+                        report(&line);
+
+                        ExitCode::FAILURE
+                    }
+                }
+            })?;
+
+        Ok(worker
+            .join()
+            .unwrap_or_else(|payload| panic::resume_unwind(payload)))
+    });
+
+    match outcome {
+        Ok(code) => code,
         Err(error) => {
             report(format!("{progname}: cannot start the parser thread: {error}").as_bytes());
             ExitCode::FAILURE

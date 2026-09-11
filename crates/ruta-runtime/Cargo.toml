@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+ruta-bytecode.workspace = true
 ruta-syntax.workspace = true
 
 [lints]

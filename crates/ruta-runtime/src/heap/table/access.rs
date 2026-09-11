@@ -35,7 +35,7 @@ impl Heap {
     ) -> Result<(), KeyError> {
         let key = normalize(key)?;
 
-        self.barrier(handle);
+        self.barrier(handle.0);
 
         let mut body = self.take_table(handle);
         self.set_in(&mut body, key, value);

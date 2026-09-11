@@ -215,6 +215,7 @@ dependencies = [
 name = "ruta-runtime"
 version = "0.0.0"
 dependencies = [
+ "ruta-bytecode",
  "ruta-syntax",
 ]
 

@@ -22,14 +22,18 @@ pub enum Frame {
         want: Want,
         /// Where the results go in the caller.
         ret_to: u32,
+        /// How many extra arguments sit just below `base`.
+        varargs: u32,
     },
 }
 
 impl Frame {
     pub fn roots(&self, values: &[Value], visit: &mut dyn FnMut(Value)) {
         match *self {
-            Frame::Lua { base, top, .. } => {
-                for value in &values[base as usize..top as usize] {
+            Frame::Lua {
+                base, top, varargs, ..
+            } => {
+                for value in &values[(base - varargs) as usize..top as usize] {
                     visit(*value);
                 }
             }
