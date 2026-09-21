@@ -1,9 +1,11 @@
 //! Runing a loaded chunk.
 
+mod arith;
 mod base;
 mod call;
 mod dispatch;
 mod error;
+mod loops;
 mod state;
 mod text;
 

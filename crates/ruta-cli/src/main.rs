@@ -27,7 +27,7 @@ fn main() -> ExitCode {
 
     match (args.next().as_deref(), args.next(), args.next()) {
         (Some("-p"), Some(path), None) => parse_only(&progname, &path),
-        (Some(path), None, None) if !path.starts_with('-') => execute(&progname, &path.to_owned()),
+        (Some(path), None, None) if !path.starts_with('-') => execute(&progname, path),
         _ => {
             report(format!("{progname}: usage: ruta -p <file>").as_bytes());
             ExitCode::FAILURE
