@@ -2,7 +2,7 @@
 
 use ruta_bytecode::{MULTI, Op, decode};
 
-use crate::heap::{Function, Upvalue};
+use crate::heap::{Function, KeyError, Upvalue};
 use crate::stack::{Frame, Want};
 use crate::value::Value;
 
@@ -211,6 +211,58 @@ fn step(vm: &mut Vm, op: Op, len: u32) -> Result<(), Error> {
                 jump(vm, offset);
             }
         }
+        Op::NewTable {
+            dest,
+            array_hint,
+            hash_hint,
+        } => {
+            let table = vm.heap.new_table(array_hint as usize, hash_hint as usize);
+            vm.stack.put(base + u32::from(dest), Value::Table(table));
+        }
+        Op::SetIndex { object, key, src } => {
+            let object = vm.stack.at(base + u32::from(object));
+            let key = vm.stack.at(base + u32::from(key));
+            let value = vm.stack.at(base + u32::from(src));
+
+            store(vm, object, key, value)?;
+        }
+        Op::DefineGlobal { env, key, src } => {
+            let env = vm.stack.at(base + u32::from(env));
+            let key = vm.stack.at(base + u32::from(key));
+            let value = vm.stack.at(base + u32::from(src));
+
+            // Only nil counts as undefined: a global holding false is already defined.
+            if let Value::Table(table) = env
+                && !matches!(vm.heap.table_get(table, key), Value::Nil)
+            {
+                let Value::Str(name) = key else {
+                    unreachable!("a global is named by a string");
+                };
+                let name = String::from_utf8_lossy(vm.bytes(name)).into_owned();
+
+                return Err(vm.throw(format!("global '{name}' already defined")));
+            }
+
+            store(vm, env, key, value)?;
+        }
+        Op::SetList {
+            table,
+            first,
+            count,
+            first_index,
+        } => {
+            let Value::Table(handle) = vm.stack.at(base + u32::from(table)) else {
+                unreachable!("a constructor fills the table it made");
+            };
+
+            for offset in 0..u32::from(count) {
+                let value = vm.stack.at(base + u32::from(first) + offset);
+
+                vm.heap
+                    .table_set(handle, Value::Int(i64::from(first_index + offset)), value)
+                    .expect("a positive integer key");
+            }
+        }
         other => unimplemented!("{other:?}"),
     }
 
@@ -247,4 +299,17 @@ fn jump(vm: &mut Vm, offset: i32) {
     *pc = pc
         .checked_add_signed(offset)
         .expect("a jump the emitter kept inside the code");
+}
+
+fn store(vm: &mut Vm, object: Value, key: Value, value: Value) -> Result<(), Error> {
+    let Value::Table(table) = object else {
+        return Err(vm.throw(format!("attempt to index a {} value", object.type_name())));
+    };
+
+    vm.heap
+        .table_set(table, key, value)
+        .map_err(|error| match error {
+            KeyError::Nil => vm.throw("table index is nil".to_owned()),
+            KeyError::Nan => vm.throw("table index is NaN".to_owned()),
+        })
 }
