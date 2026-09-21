@@ -35,6 +35,9 @@ impl Row {
 struct Direct {
     defs: Vec<u32>,
     uses: Vec<u32>,
+    /// Where the last write and the last read happen, as block and instruction.
+    wrote: Vec<(usize, usize)>,
+    read: Vec<(usize, usize)>,
     pinned: Vec<bool>,
 }
 
@@ -43,16 +46,20 @@ impl Direct {
         let regs = func.regs as usize;
         let mut defs = vec![0; regs];
         let mut uses = vec![0; regs];
+        let mut wrote = vec![(0, 0); regs];
+        let mut read = vec![(0, 0); regs];
         let mut pinned = vec![false; regs];
 
-        for block in &func.blocks {
-            for instr in &block.instrs {
+        for (block_at, block) in func.blocks.iter().enumerate() {
+            for (instr_at, instr) in block.instrs.iter().enumerate() {
                 for reg in live::reads(&instr.op) {
                     uses[reg.0 as usize] += 1;
+                    read[reg.0 as usize] = (block_at, instr_at);
                 }
 
                 for reg in live::writes(&instr.op) {
                     defs[reg.0 as usize] += 1;
+                    wrote[reg.0 as usize] = (block_at, instr_at);
                 }
             }
         }
@@ -61,13 +68,26 @@ impl Direct {
             pinned[slot.reg.0 as usize] = true;
         }
 
-        Direct { defs, uses, pinned }
+        Direct {
+            defs,
+            uses,
+            wrote,
+            read,
+            pinned,
+        }
     }
 
     fn takes(&self, reg: Reg) -> bool {
         let at = reg.0 as usize;
 
-        at < self.defs.len() && !self.pinned[at] && self.defs[at] == 1 && self.uses[at] == 1
+        at < self.defs.len()
+            && !self.pinned[at]
+            && self.defs[at] == 1
+            && self.uses[at] == 1
+            // A read in a loop the write sits outside of happens again after the row has been overwritten.
+            // Inside one block the read runs once for each write.
+            && self.wrote[at].0 == self.read[at].0
+            && self.wrote[at].1 < self.read[at].1
     }
 }
 

@@ -14,7 +14,7 @@ const DEPTH: usize = 200_000;
 
 /// Calls whatever sits at `callee`, with `args` arguments just above it.
 /// Anwers whether a Lua frame was pushed - a native has already finished when this returns.
-pub(super) fn call(vm: &mut Vm, callee: u32, args: u16, want: Want) -> Result<bool, Error> {
+pub(super) fn call(vm: &mut Vm, callee: u32, args: u32, want: Want) -> Result<bool, Error> {
     match vm.stack.at(callee) {
         Value::Func(handle) => match vm.heap.func(handle) {
             Function::Lua { .. } => {
@@ -24,9 +24,14 @@ pub(super) fn call(vm: &mut Vm, callee: u32, args: u16, want: Want) -> Result<bo
             }
             Function::Native { call, .. } => {
                 let call = *call;
+                let mark = vm.stack.height();
                 let produced = call(vm, callee, args)?;
 
-                settle(vm, callee, produced, want);
+                debug_assert_eq!(vm.stack.height(), mark + produced);
+
+                let end = settle(vm, mark, callee, produced, want);
+                vm.stack.truncate(mark.max(end));
+
                 Ok(false)
             }
         },
@@ -34,7 +39,7 @@ pub(super) fn call(vm: &mut Vm, callee: u32, args: u16, want: Want) -> Result<bo
     }
 }
 
-pub(super) fn enter(vm: &mut Vm, callee: u32, args: u16, want: Want) -> Result<(), Error> {
+pub(super) fn enter(vm: &mut Vm, callee: u32, args: u32, want: Want) -> Result<(), Error> {
     if vm.stack.depth() >= DEPTH {
         return Err(vm.throw("stack overflow".to_owned()));
     }
@@ -52,8 +57,6 @@ pub(super) fn enter(vm: &mut Vm, callee: u32, args: u16, want: Want) -> Result<(
     let params = u32::from(held.params);
     let registers = u32::from(held.max_registers);
     let kind = held.vararg;
-
-    let args = u32::from(args);
     let first = callee + 1;
 
     // A funtion that reads `...` keeps its extra arguments below the frame,
@@ -108,16 +111,22 @@ pub(super) fn enter(vm: &mut Vm, callee: u32, args: u16, want: Want) -> Result<(
 }
 
 /// Moves `produced` results sitting at `from` down to `to`, trimmed or padded to `want`.
-pub(super) fn settle(vm: &mut Vm, to: u32, produced: u16, want: Want) -> u32 {
-    let produced = u32::from(produced);
+pub(super) fn settle(vm: &mut Vm, from: u32, to: u32, produced: u32, want: Want) -> u32 {
     let kept = match want {
         Want::All => produced,
         Want::Exactly(count) => u32::from(count),
     };
+    let moved = produced.min(kept);
 
     vm.stack.reserve(to + kept);
-    vm.stack
-        .fill(to + produced.min(kept), to + kept, Value::Nil);
+    vm.stack.shift(from, to, moved);
+    vm.stack.fill(to + moved, to + kept, Value::Nil);
 
-    kept
+    if want == Want::All {
+        let Frame::Lua { top, .. } = vm.stack.current_mut();
+
+        *top = to + kept;
+    }
+
+    to + kept
 }

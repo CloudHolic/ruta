@@ -1,6 +1,6 @@
 //! The loop. Frame state lives on the frame stack, never in a local that outlives a step.
 
-use ruta_bytecode::{MULTI, Op, decode};
+use ruta_bytecode::{MULTI, Op, UpvalSource, decode};
 
 use crate::heap::{Function, KeyError, Upvalue};
 use crate::stack::{Frame, Want};
@@ -75,31 +75,97 @@ fn step(vm: &mut Vm, op: Op, len: u32) -> Result<(), Error> {
             args,
             results,
         } => {
-            debug_assert!(args != MULTI, "a spread call needs the pending-row mark");
-
+            let callee = base + u32::from(callee);
+            let args = match args {
+                MULTI => vm.pending() - callee - 1,
+                count => u32::from(count),
+            };
             let want = match results {
                 MULTI => Want::All,
                 count => Want::Exactly(u16::from(count)),
             };
 
-            call::call(vm, base + u32::from(callee), u16::from(args), want)?;
+            vm.settle_top();
+            call::call(vm, callee, args, want)?;
         }
-        Op::Return { first, count } => {
-            debug_assert!(count != MULTI, "a spread return needs the pending-row mark");
+        Op::TailCall { callee, args } => {
+            let from = base + u32::from(callee);
+            let args = match args {
+                MULTI => vm.pending() - from - 1,
+                count => u32::from(count),
+            };
+
+            // Checked while this frame still exists, so the message has a place to point at.
+            let target = vm.stack.at(from);
+
+            if !matches!(target, Value::Func(_)) {
+                return Err(vm.throw(format!("attempt to call a {} value", target.type_name())));
+            }
+
+            vm.close(base);
 
             let Some(Frame::Lua { want, ret_to, .. }) = vm.stack.leave() else {
                 unreachable!("a frame was running");
             };
 
+            vm.stack.shift(from, ret_to, args + 1);
+            call::call(vm, ret_to, args, want)?;
+        }
+        Op::Return { first, count } => {
             let from = base + u32::from(first);
-            let produced = u32::from(count);
+            let produced = match count {
+                MULTI => vm.pending() - from,
+                count => u32::from(count),
+            };
 
-            for index in 0..produced {
-                let value = vm.stack.at(from + index);
-                vm.stack.put(ret_to + index, value);
+            // A returning frame's locals go away here, and nothing before this closes them.
+            vm.close(base);
+
+            let Some(Frame::Lua { want, ret_to, .. }) = vm.stack.leave() else {
+                unreachable!("a frame was running");
+            };
+
+            call::settle(vm, from, ret_to, produced, want);
+        }
+        Op::Vararg { first, count } => {
+            let Frame::Lua { varargs, .. } = *vm.stack.current();
+            let to = base + u32::from(first);
+            let wanted = match count {
+                MULTI => varargs,
+                count => u32::from(count),
+            };
+            let copied = wanted.min(varargs);
+
+            vm.stack.reserve(to + wanted);
+            vm.stack.shift(base - varargs, to, copied);
+            vm.stack.fill(to + copied, to + wanted, Value::Nil);
+
+            if count == MULTI {
+                let Frame::Lua { top, .. } = vm.stack.current_mut();
+
+                *top = to + wanted;
+            }
+        }
+        Op::SetListSpread {
+            table,
+            first,
+            first_index,
+        } => {
+            let Value::Table(handle) = vm.stack.at(base + u32::from(table)) else {
+                unreachable!("a constructor fills the table it made");
+            };
+            let from = base + u32::from(first);
+
+            for offset in 0..vm.pending() - from {
+                let value = vm.stack.at(from + offset);
+                let index = i64::from(first_index) + i64::from(offset);
+
+                vm.heap
+                    .table_set(handle, Value::Int(index), value)
+                    .expect("a positive integer key");
             }
 
-            call::settle(vm, ret_to, u16::from(count), want);
+            vm.settle_top();
         }
         Op::LoadNil { dest } => vm.stack.put(base + u32::from(dest), Value::Nil),
         Op::LoadTrue { dest } => vm.stack.put(base + u32::from(dest), Value::Bool(true)),
@@ -263,7 +329,23 @@ fn step(vm: &mut Vm, op: Op, len: u32) -> Result<(), Error> {
                     .expect("a positive integer key");
             }
         }
-        other => unimplemented!("{other:?}"),
+        Op::Closure { dest, child } => {
+            let parent = vm.running();
+            let child = vm.heap.proto(parent).children[child as usize];
+            let count = vm.heap.proto(child).upvals.len();
+            let mut upvals = Vec::with_capacity(count);
+
+            for index in 0..count {
+                upvals.push(match vm.heap.proto(child).upvals[index].source {
+                    UpvalSource::ParentLocal(reg) => vm.capture(base + u32::from(reg)),
+                    UpvalSource::ParentUpval(at) => vm.cell(usize::from(at)),
+                });
+            }
+
+            let closure = vm.heap.new_closure(child, upvals.into_boxed_slice());
+            vm.stack.put(base + u32::from(dest), Value::Func(closure));
+        }
+        Op::CloseUpvals { from } => vm.close(base + u32::from(from)),
     }
 
     Ok(())

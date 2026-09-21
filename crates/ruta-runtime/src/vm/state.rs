@@ -16,6 +16,8 @@ pub struct Vm {
     pub(super) heap: Heap,
     pub(super) stack: Stack,
     pub(super) globals: TableRef,
+    /// The upvalues still pointing into the stack, ordered by slot.
+    pub(super) open: Vec<(u32, UpvalRef)>,
 }
 
 impl Vm {
@@ -26,6 +28,7 @@ impl Vm {
             heap,
             stack: Stack::default(),
             globals,
+            open: Vec::new(),
         };
 
         base::install(&mut vm);
@@ -98,6 +101,44 @@ impl Vm {
 
     pub(super) fn upvalue(&self, index: usize) -> Upvalue {
         self.heap.upvalue(self.cell(index))
+    }
+
+    /// The cell for a stack slot, shared by every closure that captures the same one.
+    pub(super) fn capture(&mut self, slot: u32) -> UpvalRef {
+        match self.open.binary_search_by_key(&slot, |(held, _)| *held) {
+            Ok(at) => self.open[at].1,
+            Err(at) => {
+                let cell = self.heap.new_upvalue(Upvalue::Open(slot));
+                self.open.insert(at, (slot, cell));
+
+                cell
+            }
+        }
+    }
+
+    /// Where the row a multiple-result instruction left ends.
+    pub(super) fn pending(&self) -> u32 {
+        let Frame::Lua { top, .. } = *self.stack.current();
+
+        top
+    }
+
+    /// The row has been consumeed, so the frame's top goes back to its registers.
+    pub(super) fn settle_top(&mut self) {
+        let registers = u32::from(self.heap.proto(self.running()).max_registers);
+        let Frame::Lua { base, top, .. } = self.stack.current_mut();
+
+        *top = *base + registers;
+    }
+
+    /// Moves the value out of every slot from `from` up into its cell.
+    pub(super) fn close(&mut self, from: u32) {
+        let at = self.open.partition_point(|(slot, _)| *slot < from);
+
+        for (slot, cell) in self.open.split_off(at) {
+            let value = self.stack.at(slot);
+            self.heap.set_upvalue(cell, Upvalue::Closed(value));
+        }
     }
 
     fn source(&self) -> &[u8] {

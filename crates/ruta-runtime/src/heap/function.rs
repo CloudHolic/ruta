@@ -6,8 +6,9 @@ use crate::vm::{Error, Vm};
 use super::arena::Heap;
 use super::handle::{FuncRef, ProtoRef, StrRef, UpvalRef};
 
-/// A function the host wrote.
-pub type Native = fn(&mut Vm, callee: u32, args: u16) -> Result<u16, Error>;
+/// A function the host wrote. It reads its arguments from `callee + 1`, pushes its results
+/// onto the end of the stack, and answers how many it pushed.
+pub type Native = fn(&mut Vm, callee: u32, args: u32) -> Result<u32, Error>;
 
 /// One callable. Both kinds answer `"function"`, so one handle names either.
 #[derive(Debug)]

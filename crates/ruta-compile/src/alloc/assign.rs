@@ -1,17 +1,22 @@
 //! Handing out the registers a frame holds.
 
-use crate::ir::{Function, Reg};
+use std::mem;
+
+use crate::ir::{Function, Op, Reg, Results};
 
 use super::live::{self, Span};
 use super::window;
 
-/// One thing that wants registers: a single vlaue, or a run a frame layout wants in a row.
+/// One thing that wants registers: a single value, or a run a frame layout wants in a row.
 #[derive(Debug)]
 struct Item {
     from: u32,
     width: u32,
     first: u32,
     last: u32,
+    /// Where the run feeds an instruction that writes upward from its start without bound:
+    /// a call, whose frame begins there, or `...` spreading into it.
+    clobbers: Vec<u32>,
 }
 
 /// Rewrites every virtual register as the one the frame holds it in, and answers with the map
@@ -38,16 +43,39 @@ pub(super) fn assign(func: &mut Function) -> Vec<Reg> {
     items.sort_by_key(|item| item.first);
 
     let mut taken: Vec<Option<u32>> = Vec::new();
+    let mut placed: Vec<u32> = Vec::with_capacity(items.len());
     let mut top = base;
 
-    for item in &items {
-        let at = lowest(&mut taken, base, item);
+    for (index, item) in items.iter().enumerate() {
+        let earlier = || items[..index].iter().zip(&placed);
+
+        // Whatever survives one of this run's calls has to sit below where the call writes.
+        let floor = item
+            .clobbers
+            .iter()
+            .flat_map(|&point| {
+                earlier()
+                    .filter(move |(other, _)| across(other, point))
+                    .map(|(other, at)| at + other.width)
+            })
+            .fold(base, u32::max);
+
+        let at = lowest(&mut taken, floor, item);
+
+        debug_assert!(
+            earlier().all(|(other, other_at)| {
+                !other.clobbers.iter().any(|&point| across(item, point))
+                    || at + item.width <= *other_at
+            }),
+            "a value live across a call was placed where the call writes"
+        );
 
         for offset in 0..item.width {
             taken[(at + offset) as usize] = Some(item.last);
             places[(item.from + offset) as usize] = Some(at + offset);
         }
 
+        placed.push(at);
         top = top.max(at + item.width);
     }
 
@@ -74,14 +102,19 @@ pub(super) fn assign(func: &mut Function) -> Vec<Reg> {
 }
 
 fn items(func: &Function, spans: &[Option<Span>], placed: &[Option<u32>]) -> Vec<Item> {
-    let mut runs: Vec<(u32, u32)> = Vec::new();
+    let mut runs: Vec<(u32, u32, Vec<u32>)> = Vec::new();
     let mut in_run = vec![false; func.regs as usize];
+    let mut point = 0u32;
 
     for block in &func.blocks {
         let mut low = u32::MAX;
         let mut high = 0;
+        let mut clobbers = Vec::new();
 
         for instr in &block.instrs {
+            let here = point;
+            point += 1;
+
             let Some(row) = window::row(&instr.op) else {
                 continue;
             };
@@ -90,6 +123,10 @@ fn items(func: &Function, spans: &[Option<Span>], placed: &[Option<u32>]) -> Vec
             if let Some(from) = window::start(&instr.op) {
                 low = low.min(from.0);
                 high = high.max(from.0 + row.width());
+            }
+
+            if writes_upward(&instr.op) {
+                clobbers.push(here);
             }
 
             if window::produces_multi(&instr.op) {
@@ -101,17 +138,18 @@ fn items(func: &Function, spans: &[Option<Span>], placed: &[Option<u32>]) -> Vec
                     in_run[reg as usize] = true;
                 }
 
-                runs.push((low, high - low));
+                runs.push((low, high - low, mem::take(&mut clobbers)));
             }
 
             low = u32::MAX;
             high = 0;
+            clobbers.clear();
         }
     }
 
     let mut items: Vec<Item> = runs
         .into_iter()
-        .filter_map(|(from, width)| {
+        .filter_map(|(from, width, clobbers)| {
             let stretch = (from..from + width)
                 .filter_map(|reg| spans[reg as usize])
                 .fold(None, join)?;
@@ -120,6 +158,7 @@ fn items(func: &Function, spans: &[Option<Span>], placed: &[Option<u32>]) -> Vec
                 width,
                 first: stretch.first,
                 last: stretch.last,
+                clobbers,
             })
         })
         .collect();
@@ -138,10 +177,27 @@ fn items(func: &Function, spans: &[Option<Span>], placed: &[Option<u32>]) -> Vec
             width: 1,
             first: span.first,
             last: span.last,
+            clobbers: Vec::new(),
         });
     }
 
     items
+}
+
+fn writes_upward(op: &Op) -> bool {
+    matches!(
+        op,
+        Op::Call { .. }
+            | Op::TailCall { .. }
+            | Op::Vararg {
+                results: Results::Multi(_),
+            }
+    )
+}
+
+/// Holds a value from before `point` to after it, so that `point` cannot touch it.
+fn across(item: &Item, point: u32) -> bool {
+    item.first < point && item.last > point
 }
 
 fn join(stretch: Option<Span>, span: Span) -> Option<Span> {

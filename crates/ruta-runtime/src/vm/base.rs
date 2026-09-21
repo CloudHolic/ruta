@@ -26,10 +26,10 @@ fn define(vm: &mut Vm, name: &[u8], call: Native) {
         .expect("a string key");
 }
 
-fn print(vm: &mut Vm, callee: u32, args: u16) -> Result<u16, Error> {
+fn print(vm: &mut Vm, callee: u32, args: u32) -> Result<u32, Error> {
     let mut line = Vec::new();
 
-    for index in 0..u32::from(args) {
+    for index in 0..args {
         if index > 0 {
             line.push(b'\t');
         }
