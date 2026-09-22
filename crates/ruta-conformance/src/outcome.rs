@@ -73,6 +73,52 @@ pub(crate) fn strip_interpreter_path(bytes: Vec<u8>, program: &Path) -> Vec<u8> 
     out
 }
 
+/// What a program built on the platform's C runtime wrote, before that runtime changed it on the way out.
+/// `ruta` writes its bytes as they are, so this is what it is compared against.
+pub(crate) fn as_written(bytes: Vec<u8>) -> Vec<u8> {
+    match cfg!(windows) {
+        true => undo_nan_spelling(undo_text_mode(bytes)),
+        false => bytes,
+    }
+}
+
 fn line_count(bytes: &[u8]) -> usize {
     bytes.iter().filter(|byte| **byte == b'\n').count()
+}
+
+/// A text-mode stream puts a `\r` in front of every `\n` and changes nothing else,
+/// so taking it back off every `\r\n` recovers the bytes exactly.
+fn undo_text_mode(bytes: Vec<u8>) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bytes.len());
+
+    for (at, byte) in bytes.iter().enumerate() {
+        if *byte == b'\r' && bytes.get(at + 1) == Some(&b'\n') {
+            continue;
+        }
+
+        out.push(*byte);
+    }
+
+    out
+}
+
+/// The MSVC runtime spells a NaN `-nan(ind)` or `nan(snan)` where others write `-nan` and `nan`.
+/// Unlike the line endings this is a guess; a program that prints those words itself is rewritten too.
+fn undo_nan_spelling(bytes: Vec<u8>) -> Vec<u8> {
+    const SUFFIXES: [&[u8]; 2] = [b"(ind)", b"(snan)"];
+
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut rest = bytes.as_slice();
+
+    while let Some(at) = rest.windows(3).position(|window| window == b"nan") {
+        out.extend_from_slice(&rest[..at + 3]);
+        rest = &rest[at + 3..];
+
+        if let Some(suffix) = SUFFIXES.iter().find(|suffix| rest.starts_with(suffix)) {
+            rest = &rest[suffix.len()..];
+        }
+    }
+
+    out.extend_from_slice(rest);
+    out
 }

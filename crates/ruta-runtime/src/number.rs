@@ -63,16 +63,6 @@ fn trim(text: &str) -> String {
     }
 }
 
-/// The C runtime writes this one.
-#[cfg(windows)]
-fn nan(value: f64) -> &'static str {
-    match value.is_sign_negative() {
-        true => "-nan(ind)",
-        false => "nan",
-    }
-}
-
-#[cfg(not(windows))]
 fn nan(value: f64) -> &'static str {
     match value.is_sign_negative() {
         true => "-nan",

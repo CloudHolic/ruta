@@ -1,6 +1,6 @@
 # 6. Diagnostics end their lines the way the platform's C runtime does
 
-Status: accepted (2026-08-25)
+Status: superseded by [0009](0009-bytes-as-written.md)
 
 ## Context
 
@@ -32,7 +32,9 @@ disagree, so the io library has to model it regardless.
 
 ## Decision
 
-`ruta` ends a diagnostic line with `\r\n` on Windows and `\n` elsewhere.
+On Windows every `\n` `ruta` writes to a standard stream becomes `\r\n`, the way a C
+runtime stream in text mode translates on the way out — a line break inside a message or
+a printed string included. Elsewhere the bytes go out as they are.
 
 Stage 1 applies this to stderr in `ruta-cli`, which is all the output that exists. The same
 rule covers stdout when the VM arrives in stage 4 and the io library in stage 6; the mechanism

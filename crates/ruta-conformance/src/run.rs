@@ -8,7 +8,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 
 use crate::manifest::{Case, Recipe};
-use crate::outcome::{Comparison, Outcome, Streams};
+use crate::outcome::{Comparison, Outcome, Streams, as_written};
 use crate::sandbox::{self, Sandbox, copy_dir};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
@@ -106,7 +106,20 @@ impl Harness {
         let dir = sandbox::sandbox(&self.workdir, side, mode)?;
         let args = prepare(&dir)?;
 
-        sandbox::run(program, &dir, &args, self.timeout)
+        let outcome = sandbox::run(program, &dir, &args, self.timeout)?;
+
+        // The reference is a C program: compare against what it wrote, not what its runtime mode of that.
+        // Tied to the binary rather than the seat, so the reference against itself still matches.
+        Ok(
+            outcome.map(|outcome| match program == self.reference.as_path() {
+                true => Outcome {
+                    stdout: as_written(outcome.stdout),
+                    stderr: as_written(outcome.stderr),
+                    code: outcome.code,
+                },
+                false => outcome,
+            }),
+        )
     }
 
     fn compare(

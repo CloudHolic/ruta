@@ -14,11 +14,6 @@ use ruta_syntax::line_index::LineIndex;
 use ruta_syntax::parser::parse_chunk;
 use ruta_syntax::scope::resolve;
 
-#[cfg(windows)]
-const LINE_END: &[u8] = b"\r\n";
-#[cfg(not(windows))]
-const LINE_END: &[u8] = b"\n";
-
 const PARSE_STACK: usize = 32 * 1024 * 1024;
 
 /// One chunk to run, in the order the command line gave them.
@@ -208,9 +203,8 @@ fn execute(progname: &str, chunks: &[Chunk]) -> ExitCode {
 
 /// Lua's own library writes through the C runtime, which on Windows turns `\n` into `\r\n`.
 fn report(line: &[u8]) {
-    let mut out = Vec::with_capacity(line.len() + LINE_END.len());
-    out.extend_from_slice(line);
-    out.extend_from_slice(LINE_END);
+    let mut out = line.to_vec();
+    out.push(b'\n');
 
     // Nothing left to report to if stderr itself cannot be written.
     let _ = io::stderr().write_all(&out);

@@ -10,7 +10,7 @@ use super::state::Vm;
 /// What a key register holds, as far as naming a field goes.
 enum Key {
     Name(Vec<u8>),
-    /// A small non-negative integer written into the code, which is all the message names.
+    /// An integer written into the code, which the messages names only as such.
     Small,
     Other,
 }
@@ -220,7 +220,7 @@ fn key_of(vm: &Vm, code: &Code, key: u8, at: u32) -> Key {
 
     match vm.heap.proto(vm.running()).constants[constant as usize] {
         Value::Str(handle) => Key::Name(vm.bytes(handle).to_vec()),
-        Value::Int(number) if (0..=255).contains(&number) => Key::Small,
+        Value::Int(_) => Key::Small,
         _ => Key::Other,
     }
 }

@@ -1,6 +1,6 @@
 //! The library a chunk finds in its globals.
 
-use std::io::{self, Write};
+use std::io::{Write, stdout};
 
 use crate::heap::{FuncRef, Heap, Native};
 use crate::value::Value;
@@ -8,11 +8,6 @@ use crate::value::Value;
 use super::arith;
 use super::error::Error;
 use super::state::Vm;
-
-#[cfg(windows)]
-const LINE_END: &[u8] = b"\r\n";
-#[cfg(not(windows))]
-const LINE_END: &[u8] = b"\n";
 
 /// The iterators `pairs` and `ipairs` hand out.
 pub(super) fn iterators(heap: &mut Heap) -> (FuncRef, FuncRef) {
@@ -155,10 +150,10 @@ fn print(vm: &mut Vm, callee: u32, args: u32) -> Result<u32, Error> {
         line.extend_from_slice(&vm.text(value));
     }
 
-    line.extend_from_slice(LINE_END);
+    line.push(b'\n');
 
     // Nothing is left to report to if stdout itself cannot be written.
-    let _ = io::stdout().write_all(&line);
+    let _ = stdout().write_all(&line);
 
     Ok(0)
 }
