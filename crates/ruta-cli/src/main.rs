@@ -21,15 +21,31 @@ const LINE_END: &[u8] = b"\n";
 
 const PARSE_STACK: usize = 32 * 1024 * 1024;
 
+/// One chunk to run, in the order the command line gave them.
+#[derive(Debug)]
+enum Chunk {
+    Line(String),
+    File(String),
+}
+
 fn main() -> ExitCode {
     let mut args = env::args();
     let progname = args.next().unwrap_or_else(|| "ruta".to_owned());
+    let args: Vec<String> = args.collect();
 
-    match (args.next().as_deref(), args.next(), args.next()) {
-        (Some("-p"), Some(path), None) => parse_only(&progname, &path),
-        (Some(path), None, None) if !path.starts_with('-') => execute(&progname, path),
-        _ => {
-            report(format!("{progname}: usage: ruta -p <file>").as_bytes());
+    if let [flag, path] = args.as_slice()
+        && flag == "-p"
+    {
+        return parse_only(&progname, path);
+    }
+
+    match chunks(&args) {
+        Some(chunks) => execute(&progname, &chunks),
+        None => {
+            report(
+                format!("{progname}: usage: ruta [-e stat] ... [script] | ruta -p <file>")
+                    .as_bytes(),
+            );
             ExitCode::FAILURE
         }
     }
@@ -86,57 +102,94 @@ fn parse_only(progname: &str, path: &str) -> ExitCode {
     }
 }
 
-/// Compiles a file and runs it.
-fn execute(progname: &str, path: &str) -> ExitCode {
-    let source = match fs::read(path) {
-        Ok(bytes) => strip_prelude(&bytes),
-        Err(error) => {
-            report(format!("{progname}: cannot open {path}: {error}").as_bytes());
-            return ExitCode::FAILURE;
-        }
-    };
+/// Any number of `-e stat`, then at most one script, which comes last.
+fn chunks(args: &[String]) -> Option<Vec<Chunk>> {
+    let mut out = Vec::new();
+    let mut rest = args;
 
+    while let Some((first, tail)) = rest.split_first() {
+        match first.as_str() {
+            "-e" => {
+                let (line, tail) = tail.split_first()?;
+                out.push(Chunk::Line(line.clone()));
+                rest = tail;
+            }
+            path if !path.starts_with('-') && tail.is_empty() => {
+                out.push(Chunk::File(path.to_owned()));
+                rest = tail;
+            }
+            _ => return None,
+        }
+    }
+
+    (!out.is_empty()).then_some(out)
+}
+
+/// Compiles a file and runs it.
+fn execute(progname: &str, chunks: &[Chunk]) -> ExitCode {
     let outcome: io::Result<ExitCode> = thread::scope(|scope| {
         let worker = thread::Builder::new()
             .stack_size(PARSE_STACK)
             .spawn_scoped(scope, || {
-                let built = parse_chunk(&source).and_then(|ast| {
-                    resolve(&ast).and_then(|bindings| {
-                        let mut program = lower(&ast, &bindings)?;
-                        allocate(&mut program)?;
-
-                        let lines = LineIndex::new(&source);
-
-                        Ok(emit(
-                            &program,
-                            &Source {
-                                lines: &lines,
-                                name: format!("@{path}").as_bytes(),
-                            },
-                        ))
-                    })
-                });
-
-                let prototype = match built {
-                    Ok(prototype) => prototype,
-                    Err(error) => {
-                        report_error(progname, path, &error, &source);
-                        return ExitCode::FAILURE;
-                    }
-                };
-
                 let mut vm = Vm::new();
 
-                match vm.run(prototype) {
-                    Ok(()) => ExitCode::SUCCESS,
-                    Err(error) => {
+                for chunk in chunks {
+                    let (source, shown, name) = match chunk {
+                        Chunk::Line(line) => (
+                            line.as_bytes().to_vec(),
+                            "(command line)".to_owned(),
+                            b"=(command line)".to_vec(),
+                        ),
+                        Chunk::File(path) => match fs::read(path) {
+                            Ok(bytes) => (
+                                strip_prelude(&bytes),
+                                path.clone(),
+                                format!("@{path}").into_bytes(),
+                            ),
+                            Err(error) => {
+                                report(
+                                    format!("{progname}: cannot open {path}: {error}").as_bytes(),
+                                );
+                                return ExitCode::FAILURE;
+                            }
+                        },
+                    };
+
+                    let built = parse_chunk(&source).and_then(|ast| {
+                        resolve(&ast).and_then(|bindings| {
+                            let mut program = lower(&ast, &bindings)?;
+                            allocate(&mut program)?;
+
+                            let lines = LineIndex::new(&source);
+
+                            Ok(emit(
+                                &program,
+                                &Source {
+                                    lines: &lines,
+                                    name: &name,
+                                },
+                            ))
+                        })
+                    });
+
+                    let prototype = match built {
+                        Ok(prototype) => prototype,
+                        Err(error) => {
+                            report_error(progname, &shown, &error, &source);
+                            return ExitCode::FAILURE;
+                        }
+                    };
+
+                    if let Err(error) = vm.run(prototype) {
                         let mut line = format!("{progname}: ").into_bytes();
-                        line.extend_from_slice(&vm.text(error.value));
+                        line.extend_from_slice(&vm.message(&error));
                         report(&line);
 
-                        ExitCode::FAILURE
+                        return ExitCode::FAILURE;
                     }
                 }
+
+                ExitCode::SUCCESS
             })?;
 
         Ok(worker

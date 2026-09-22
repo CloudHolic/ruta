@@ -68,6 +68,10 @@ impl Stack {
             .copy_within(from as usize..(from + count) as usize, to as usize);
     }
 
+    pub(crate) fn push(&mut self, value: Value) {
+        self.values.push(value);
+    }
+
     pub(crate) fn truncate(&mut self, height: u32) {
         self.values.truncate(height as usize);
     }

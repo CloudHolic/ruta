@@ -35,13 +35,13 @@ pub(super) fn call(vm: &mut Vm, callee: u32, args: u32, want: Want) -> Result<bo
                 Ok(false)
             }
         },
-        other => Err(vm.throw(format!("attempt to call a {} value", other.type_name()))),
+        other => Err(vm.fault_call(other, callee)),
     }
 }
 
 pub(super) fn enter(vm: &mut Vm, callee: u32, args: u32, want: Want) -> Result<(), Error> {
     if vm.stack.depth() >= DEPTH {
-        return Err(vm.throw("stack overflow".to_owned()));
+        return Err(vm.throw("stack overflow"));
     }
 
     let Value::Func(handle) = vm.stack.at(callee) else {

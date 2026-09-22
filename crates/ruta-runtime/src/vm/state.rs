@@ -1,8 +1,9 @@
 //! The machine: one heap, one pair of statcks, one table of globals.
 
 use ruta_bytecode::Prototype;
+use ruta_syntax::{Number, parse_number};
 
-use crate::heap::{Function, Heap, ProtoRef, StrRef, TableRef, UpvalRef, Upvalue};
+use crate::heap::{FuncRef, Function, Heap, ProtoRef, StrRef, TableRef, UpvalRef, Upvalue};
 use crate::stack::{Frame, Stack};
 use crate::value::Value;
 
@@ -10,6 +11,7 @@ use super::base;
 use super::call;
 use super::dispatch;
 use super::error::{Error, chunk};
+use super::origin;
 
 #[derive(Debug)]
 pub struct Vm {
@@ -18,17 +20,24 @@ pub struct Vm {
     pub(super) globals: TableRef,
     /// The upvalues still pointing into the stack, ordered by slot.
     pub(super) open: Vec<(u32, UpvalRef)>,
+    /// The iterators `pairs` and `ipairs` hand out, made once so that each is always the smae function:
+    /// `pairs(t) == next`.
+    pub(super) next: FuncRef,
+    pub(super) ipairs_step: FuncRef,
 }
 
 impl Vm {
     pub fn new() -> Vm {
         let mut heap = Heap::default();
         let globals = heap.new_table(0, 0);
+        let (next, ipairs_step) = base::iterators(&mut heap);
         let mut vm = Vm {
             heap,
             stack: Stack::default(),
             globals,
             open: Vec::new(),
+            next,
+            ipairs_step,
         };
 
         base::install(&mut vm);
@@ -57,16 +66,43 @@ impl Vm {
         super::text::of(self, value)
     }
 
+    /// What the command line shows for an error nothing caught.
+    pub fn message(&mut self, error: &Error) -> Vec<u8> {
+        match error.value {
+            Value::Str(_) | Value::Int(_) | Value::Float(_) => self.text(error.value),
+            other => format!("(error object is a {} value)", other.type_name()).into_bytes(),
+        }
+    }
+
     /// Raises a runtime error at the instruciton now running.
-    pub(super) fn throw(&mut self, message: String) -> Error {
+    pub(super) fn throw(&mut self, message: impl AsRef<[u8]>) -> Error {
         let mut text = chunk(self.source());
-        text.extend_from_slice(format!(":{}: {message}", self.line()).as_bytes());
+        text.extend_from_slice(format!(":{}: ", self.line()).as_bytes());
+        text.extend_from_slice(message.as_ref());
 
         let handle = self.heap.new_string(&text);
 
         Error {
             value: Value::Str(handle),
         }
+    }
+
+    /// `attempt to <what> a <type> value`, naming where the value came from when that is known.
+    pub(super) fn fault(&mut self, what: &str, value: Value, reg: u8) -> Error {
+        let mut message = format!("attempt to {what} a {} value", value.type_name()).into_bytes();
+        message.extend(origin::clause(origin::name(self, reg)));
+
+        self.throw(message)
+    }
+
+    pub(super) fn fault_call(&mut self, value: Value, callee: u32) -> Error {
+        let Frame::Lua { base, .. } = *self.stack.current();
+        let reg = u8::try_from(callee - base).expect("a register of the running frame");
+
+        let mut message = format!("attempt to call a {} value", value.type_name()).into_bytes();
+        message.extend(origin::clause(origin::callee(self, reg)));
+
+        self.throw(message)
     }
 
     pub(super) fn running(&self) -> ProtoRef {
@@ -131,6 +167,33 @@ impl Vm {
         *top = *base + registers;
     }
 
+    /// The number a value is or spells out.
+    pub(super) fn to_number(&self, value: Value) -> Option<Value> {
+        match value {
+            Value::Int(_) | Value::Float(_) => Some(value),
+            Value::Str(handle) => parse_number(self.bytes(handle)).map(|number| match number {
+                Number::Int(number) => Value::Int(number),
+                Number::Float(number) => Value::Float(number),
+            }),
+            _ => None,
+        }
+    }
+
+    /// `bad argument #n` to 'name' (problem)`.
+    pub(super) fn bad_argument(&mut self, callee: u32, index: u32, problem: &str) -> Error {
+        let Frame::Lua { base, .. } = *self.stack.current();
+        let name = u8::try_from(callee - base)
+            .ok()
+            .and_then(|reg| origin::called(self, reg))
+            .unwrap_or_else(|| self.registered(callee));
+
+        let mut message = format!("bad argument #{index} to '").into_bytes();
+        message.extend_from_slice(&name);
+        message.extend_from_slice(format!("' ({problem})").as_bytes());
+
+        self.throw(message)
+    }
+
     /// Moves the value out of every slot from `from` up into its cell.
     pub(super) fn close(&mut self, from: u32) {
         let at = self.open.partition_point(|(slot, _)| *slot < from);
@@ -138,6 +201,15 @@ impl Vm {
         for (slot, cell) in self.open.split_off(at) {
             let value = self.stack.at(slot);
             self.heap.set_upvalue(cell, Upvalue::Closed(value));
+        }
+    }
+
+    /// An error a host funciton raises from inside itself, which points at no line.
+    pub(super) fn bare(&mut self, message: impl AsRef<[u8]>) -> Error {
+        let handle = self.heap.new_string(message.as_ref());
+
+        Error {
+            value: Value::Str(handle),
         }
     }
 
@@ -151,6 +223,16 @@ impl Vm {
         let Frame::Lua { pc, .. } = *self.stack.current();
 
         self.heap.proto(self.running()).lines.line_at(pc - 1)
+    }
+
+    fn registered(&self, callee: u32) -> Vec<u8> {
+        match self.stack.at(callee) {
+            Value::Func(handle) => match self.heap.func(handle) {
+                Function::Native { name, .. } => self.bytes(*name).to_vec(),
+                Function::Lua { .. } => b"?".to_vec(),
+            },
+            _ => b"?".to_vec(),
+        }
     }
 }
 

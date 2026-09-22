@@ -8,3 +8,5 @@ pub mod scope;
 pub mod token;
 
 pub(crate) mod lexer;
+
+pub use lexer::{Number, parse_number};

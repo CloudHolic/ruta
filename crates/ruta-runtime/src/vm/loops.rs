@@ -13,7 +13,7 @@ pub(super) fn prepare(vm: &mut Vm, control: u32) -> Result<bool, Error> {
 
     if let (Value::Int(init), Value::Int(step)) = (init, step) {
         if step == 0 {
-            return Err(vm.throw("'for' step is zero".to_owned()));
+            return Err(vm.throw("'for' step is zero"));
         }
 
         let Some(limit) = integer_limit(vm, limit, step)? else {
@@ -40,7 +40,7 @@ pub(super) fn prepare(vm: &mut Vm, control: u32) -> Result<bool, Error> {
     let init = float(vm, init, "initial value")?;
 
     if step == 0.0 {
-        return Err(vm.throw("'for' step is zero".to_owned()));
+        return Err(vm.throw("'for' step is zero"));
     }
 
     let runs = match step > 0.0 {
@@ -99,10 +99,10 @@ pub(super) fn advance(vm: &mut Vm, control: u32) -> bool {
 /// An integer loop's limit. A float is rounded otward the start, and one past either end of the range
 /// means the loop runs to that end or not at all.
 fn integer_limit(vm: &mut Vm, limit: Value, step: i64) -> Result<Option<i64>, Error> {
-    let number = match limit {
-        Value::Int(number) => return Ok(Some(number)),
-        Value::Float(number) => number,
-        other => return Err(bad(vm, other, "limit")),
+    let number = match vm.to_number(limit) {
+        Some(Value::Int(number)) => return Ok(Some(number)),
+        Some(Value::Float(number)) => number,
+        _ => return Err(bad(vm, limit, "limit")),
     };
 
     let rounded = match step < 0 {
@@ -122,10 +122,10 @@ fn integer_limit(vm: &mut Vm, limit: Value, step: i64) -> Result<Option<i64>, Er
 }
 
 fn float(vm: &mut Vm, value: Value, what: &str) -> Result<f64, Error> {
-    match value {
-        Value::Int(number) => Ok(number as f64),
-        Value::Float(number) => Ok(number),
-        other => Err(bad(vm, other, what)),
+    match vm.to_number(value) {
+        Some(Value::Int(number)) => Ok(number as f64),
+        Some(Value::Float(number)) => Ok(number),
+        _ => Err(bad(vm, value, what)),
     }
 }
 

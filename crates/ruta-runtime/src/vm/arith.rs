@@ -5,6 +5,7 @@ use std::cmp::Ordering;
 use crate::value::Value;
 
 use super::error::Error;
+use super::origin;
 use super::state::Vm;
 
 #[derive(Debug, Clone, Copy)]
@@ -35,6 +36,13 @@ pub(super) enum Compare {
     Ge,
 }
 
+/// A value and the register it was read from, which an error message may name.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Operand {
+    pub(super) value: Value,
+    pub(super) reg: u8,
+}
+
 /// A number in whichever of the two shapes it arrived as.
 #[derive(Debug, Clone, Copy)]
 enum Num {
@@ -42,64 +50,69 @@ enum Num {
     Float(f64),
 }
 
-pub(super) fn arith(vm: &mut Vm, kind: Arith, left: Value, right: Value) -> Result<Value, Error> {
-    let (Some(left), Some(right)) = (number(left), number(right)) else {
+pub(super) fn arith(
+    vm: &mut Vm,
+    kind: Arith,
+    left: Operand,
+    right: Operand,
+) -> Result<Value, Error> {
+    let (Some(a), Some(b)) = (number(left.value), number(right.value)) else {
         return Err(arith_error(vm, left, right));
     };
 
-    match (kind, left, right) {
-        (Arith::Div, _, _) => Ok(Value::Float(float(left) / float(right))),
-        (Arith::Pow, _, _) => Ok(Value::Float(float(left).powf(float(right)))),
-        (Arith::Add, Num::Int(left), Num::Int(right)) => Ok(Value::Int(left.wrapping_add(right))),
-        (Arith::Sub, Num::Int(left), Num::Int(right)) => Ok(Value::Int(left.wrapping_sub(right))),
-        (Arith::Mul, Num::Int(left), Num::Int(right)) => Ok(Value::Int(left.wrapping_mul(right))),
-        (Arith::IDiv, Num::Int(left), Num::Int(right)) => match right {
-            0 => Err(vm.throw("attempt to divide by zero".to_owned())),
-            _ => Ok(Value::Int(floor_div(left, right))),
+    match (kind, a, b) {
+        (Arith::Div, _, _) => Ok(Value::Float(float(a) / float(b))),
+        (Arith::Pow, _, _) => Ok(Value::Float(float(a).powf(float(b)))),
+        (Arith::Add, Num::Int(a), Num::Int(b)) => Ok(Value::Int(a.wrapping_add(b))),
+        (Arith::Sub, Num::Int(a), Num::Int(b)) => Ok(Value::Int(a.wrapping_sub(b))),
+        (Arith::Mul, Num::Int(a), Num::Int(b)) => Ok(Value::Int(a.wrapping_mul(b))),
+        (Arith::IDiv, Num::Int(a), Num::Int(b)) => match b {
+            0 => Err(vm.throw("attempt to divide by zero")),
+            _ => Ok(Value::Int(floor_div(a, b))),
         },
-        (Arith::Mod, Num::Int(left), Num::Int(right)) => match right {
-            0 => Err(vm.throw("attempt to perform 'n%0'".to_owned())),
-            _ => Ok(Value::Int(floor_mod(left, right))),
+        (Arith::Mod, Num::Int(a), Num::Int(b)) => match b {
+            0 => Err(vm.throw("attempt to perform 'n%0'")),
+            _ => Ok(Value::Int(floor_mod(a, b))),
         },
-        (Arith::Add, _, _) => Ok(Value::Float(float(left) + float(right))),
-        (Arith::Sub, _, _) => Ok(Value::Float(float(left) - float(right))),
-        (Arith::Mul, _, _) => Ok(Value::Float(float(left) * float(right))),
-        (Arith::IDiv, _, _) => Ok(Value::Float((float(left) / float(right)).floor())),
-        (Arith::Mod, _, _) => Ok(Value::Float(float_mod(float(left), float(right)))),
+        (Arith::Add, _, _) => Ok(Value::Float(float(a) + float(b))),
+        (Arith::Sub, _, _) => Ok(Value::Float(float(a) - float(b))),
+        (Arith::Mul, _, _) => Ok(Value::Float(float(a) * float(b))),
+        (Arith::IDiv, _, _) => Ok(Value::Float((float(a) / float(b)).floor())),
+        (Arith::Mod, _, _) => Ok(Value::Float(float_mod(float(a), float(b)))),
     }
 }
 
-pub(super) fn negate(vm: &mut Vm, value: Value) -> Result<Value, Error> {
-    match number(value) {
+pub(super) fn negate(vm: &mut Vm, operand: Operand) -> Result<Value, Error> {
+    match number(operand.value) {
         Some(Num::Int(number)) => Ok(Value::Int(number.wrapping_neg())),
         Some(Num::Float(number)) => Ok(Value::Float(-number)),
-        None => Err(arith_error(vm, value, value)),
+        None => Err(arith_error(vm, operand, operand)),
     }
 }
 
 pub(super) fn bitwise(
     vm: &mut Vm,
     kind: Bitwise,
-    left: Value,
-    right: Value,
+    left: Operand,
+    right: Operand,
 ) -> Result<Value, Error> {
-    let (Some(left), Some(right)) = (integer(left), integer(right)) else {
+    let (Some(a), Some(b)) = (integer(left.value), integer(right.value)) else {
         return Err(bitwise_error(vm, left, right));
     };
 
     Ok(Value::Int(match kind {
-        Bitwise::And => left & right,
-        Bitwise::Or => left | right,
-        Bitwise::Xor => left ^ right,
-        Bitwise::Shl => shift(left, right),
-        Bitwise::Shr => shift(left, right.wrapping_neg()),
+        Bitwise::And => a & b,
+        Bitwise::Or => a | b,
+        Bitwise::Xor => a ^ b,
+        Bitwise::Shl => shift(a, b),
+        Bitwise::Shr => shift(a, b.wrapping_neg()),
     }))
 }
 
-pub(super) fn complement(vm: &mut Vm, value: Value) -> Result<Value, Error> {
-    match integer(value) {
+pub(super) fn complement(vm: &mut Vm, operand: Operand) -> Result<Value, Error> {
+    match integer(operand.value) {
         Some(number) => Ok(Value::Int(!number)),
-        None => Err(bitwise_error(vm, value, value)),
+        None => Err(bitwise_error(vm, operand, operand)),
     }
 }
 
@@ -134,7 +147,13 @@ pub(super) fn compare(
         (Value::Str(left), Value::Str(right)) => Some(vm.bytes(left).cmp(vm.bytes(right))),
         _ => match (number(left), number(right)) {
             (Some(left), Some(right)) => order(left, right),
-            _ => return Err(compare_error(vm, left, right)),
+            _ => {
+                let (left, right) = (left.type_name(), right.type_name());
+                return Err(vm.throw(match left == right {
+                    true => format!("attempt to compare two {left} values"),
+                    false => format!("attempt to compare {left} with {right}"),
+                }));
+            }
         },
     };
 
@@ -144,17 +163,14 @@ pub(super) fn compare(
     })
 }
 
-pub(super) fn concat(vm: &mut Vm, left: Value, right: Value) -> Result<Value, Error> {
-    let (Some(mut bytes), Some(tail)) = (text(vm, left), text(vm, right)) else {
-        let bad = match text(vm, left) {
+pub(super) fn concat(vm: &mut Vm, left: Operand, right: Operand) -> Result<Value, Error> {
+    let (Some(mut bytes), Some(tail)) = (text(vm, left.value), text(vm, right.value)) else {
+        let bad = match text(vm, left.value) {
             Some(_) => right,
             None => left,
         };
 
-        return Err(vm.throw(format!(
-            "attempt to concatenate a {} value",
-            bad.type_name()
-        )));
+        return Err(vm.fault("concatenate", bad.value, bad.reg));
     };
 
     bytes.extend_from_slice(&tail);
@@ -162,14 +178,20 @@ pub(super) fn concat(vm: &mut Vm, left: Value, right: Value) -> Result<Value, Er
     Ok(Value::Str(vm.intern(&bytes)))
 }
 
-pub(super) fn length(vm: &mut Vm, value: Value) -> Result<Value, Error> {
-    match value {
+pub(super) fn length(vm: &mut Vm, operand: Operand) -> Result<Value, Error> {
+    match operand.value {
         Value::Str(handle) => Ok(Value::Int(vm.bytes(handle).len() as i64)),
         Value::Table(handle) => Ok(Value::Int(vm.heap.table_length(handle))),
-        other => Err(vm.throw(format!(
-            "attempt to get length of a {} value",
-            other.type_name()
-        ))),
+        other => Err(vm.fault("get length of", other, operand.reg)),
+    }
+}
+
+/// A value the bitwise operators can use, which a float only is when it is whole.
+pub(super) fn integer(value: Value) -> Option<i64> {
+    match value {
+        Value::Int(number) => Some(number),
+        Value::Float(number) if number.floor() == number && whole(number) => Some(number as i64),
+        _ => None,
     }
 }
 
@@ -179,15 +201,6 @@ fn number(value: Value) -> Option<Num> {
     match value {
         Value::Int(number) => Some(Num::Int(number)),
         Value::Float(number) => Some(Num::Float(number)),
-        _ => None,
-    }
-}
-
-/// A value the bitwise operators can use, which a float only is when it is whole.
-fn integer(value: Value) -> Option<i64> {
-    match value {
-        Value::Int(number) => Some(number),
-        Value::Float(number) if number.floor() == number && whole(number) => Some(number as i64),
         _ => None,
     }
 }
@@ -282,37 +295,36 @@ fn text(vm: &Vm, value: Value) -> Option<Vec<u8>> {
     }
 }
 
-fn arith_error(vm: &mut Vm, left: Value, right: Value) -> Error {
-    let bad = match number(left) {
+/// The first operand that is not a number takes the blame.
+fn arith_error(vm: &mut Vm, left: Operand, right: Operand) -> Error {
+    let bad = match number(left.value) {
         Some(_) => right,
         None => left,
     };
 
-    vm.throw(format!(
-        "attempt to perform arithmetic on a {} value",
-        bad.type_name()
-    ))
+    vm.fault("perform arithmetic on", bad.value, bad.reg)
 }
 
-fn bitwise_error(vm: &mut Vm, left: Value, right: Value) -> Error {
-    let bad = match integer(left) {
-        Some(_) => right,
-        None => left,
-    };
+/// Two numbers fail only for want of an integer, and the first that lacks one takes the
+/// blame. Otherwise the first operand that is not a number does.
+fn bitwise_error(vm: &mut Vm, left: Operand, right: Operand) -> Error {
+    if number(left.value).is_some() && number(right.value).is_some() {
+        let bad = match integer(left.value) {
+            Some(_) => right,
+            None => left,
+        };
 
-    match number(bad) {
-        Some(_) => vm.throw("number has no integer representation".to_owned()),
-        None => vm.throw(format!(
-            "attempt to perform bitwise operation on a {} value",
-            bad.type_name()
-        )),
+        let mut message = b"number".to_vec();
+        message.extend(origin::clause(origin::name(vm, bad.reg)));
+        message.extend_from_slice(b" has no integer representation");
+
+        return vm.throw(message);
     }
-}
 
-fn compare_error(vm: &mut Vm, left: Value, right: Value) -> Error {
-    vm.throw(format!(
-        "attempt to compare {} with {}",
-        left.type_name(),
-        right.type_name()
-    ))
+    let bad = match number(left.value) {
+        Some(_) => right,
+        None => left,
+    };
+
+    vm.fault("perform bitwise operation on", bad.value, bad.reg)
 }

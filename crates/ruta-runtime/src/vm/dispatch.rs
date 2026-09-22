@@ -6,7 +6,7 @@ use crate::heap::{Function, KeyError, Upvalue};
 use crate::stack::{Frame, Want};
 use crate::value::Value;
 
-use super::arith::{self, Arith, Bitwise, Compare};
+use super::arith::{self, Arith, Bitwise, Compare, Operand};
 use super::call;
 use super::error::Error;
 use super::loops;
@@ -58,14 +58,12 @@ fn step(vm: &mut Vm, op: Op, len: u32) -> Result<(), Error> {
             vm.stack.put(base + u32::from(dest), value);
         }
         Op::Index { dest, object, key } => {
-            let object = vm.stack.at(base + u32::from(object));
+            let target = vm.stack.at(base + u32::from(object));
             let key = vm.stack.at(base + u32::from(key));
 
-            let value = match object {
+            let value = match target {
                 Value::Table(table) => vm.heap.table_get(table, key),
-                other => {
-                    return Err(vm.throw(format!("attempt to index a {} value", other.type_name())));
-                }
+                other => return Err(vm.fault("index", other, object)),
             };
 
             vm.stack.put(base + u32::from(dest), value);
@@ -94,12 +92,32 @@ fn step(vm: &mut Vm, op: Op, len: u32) -> Result<(), Error> {
                 MULTI => vm.pending() - from - 1,
                 count => u32::from(count),
             };
-
-            // Checked while this frame still exists, so the message has a place to point at.
             let target = vm.stack.at(from);
 
+            let Value::Func(handle) = target else {
+                return Err(vm.fault_call(target, from));
+            };
+
+            // A host function runs while this frame still stands, so an error it raises
+            // points here; this frame then returns whatever it answered.
+            if matches!(vm.heap.func(handle), Function::Native { .. }) {
+                call::call(vm, from, args, Want::All)?;
+
+                let produced = vm.pending() - from;
+                finish(vm, base, from, produced);
+            } else {
+                vm.close(base);
+
+                let Some(Frame::Lua { want, ret_to, .. }) = vm.stack.leave() else {
+                    unreachable!("a frame was running");
+                };
+
+                vm.stack.shift(from, ret_to, args + 1);
+                call::call(vm, ret_to, args, want)?;
+            }
+
             if !matches!(target, Value::Func(_)) {
-                return Err(vm.throw(format!("attempt to call a {} value", target.type_name())));
+                return Err(vm.fault_call(target, from));
             }
 
             vm.close(base);
@@ -118,14 +136,7 @@ fn step(vm: &mut Vm, op: Op, len: u32) -> Result<(), Error> {
                 count => u32::from(count),
             };
 
-            // A returning frame's locals go away here, and nothing before this closes them.
-            vm.close(base);
-
-            let Some(Frame::Lua { want, ret_to, .. }) = vm.stack.leave() else {
-                unreachable!("a frame was running");
-            };
-
-            call::settle(vm, from, ret_to, produced, want);
+            finish(vm, base, from, produced);
         }
         Op::Vararg { first, count } => {
             let Frame::Lua { varargs, .. } = *vm.stack.current();
@@ -186,8 +197,11 @@ fn step(vm: &mut Vm, op: Op, len: u32) -> Result<(), Error> {
             }
         }
         Op::Neg { dest, operand } => {
-            let value = vm.stack.at(base + u32::from(operand));
-            let value = arith::negate(vm, value)?;
+            let read = Operand {
+                value: vm.stack.at(base + u32::from(operand)),
+                reg: operand,
+            };
+            let value = arith::negate(vm, read)?;
             vm.stack.put(base + u32::from(dest), value);
         }
         Op::Not { dest, operand } => {
@@ -196,13 +210,19 @@ fn step(vm: &mut Vm, op: Op, len: u32) -> Result<(), Error> {
                 .put(base + u32::from(dest), Value::Bool(!value.is_truthy()));
         }
         Op::Len { dest, operand } => {
-            let value = vm.stack.at(base + u32::from(operand));
-            let value = arith::length(vm, value)?;
+            let read = Operand {
+                value: vm.stack.at(base + u32::from(operand)),
+                reg: operand,
+            };
+            let value = arith::length(vm, read)?;
             vm.stack.put(base + u32::from(dest), value);
         }
         Op::BNot { dest, operand } => {
-            let value = vm.stack.at(base + u32::from(operand));
-            let value = arith::complement(vm, value)?;
+            let read = Operand {
+                value: vm.stack.at(base + u32::from(operand)),
+                reg: operand,
+            };
+            let value = arith::complement(vm, read)?;
             vm.stack.put(base + u32::from(dest), value);
         }
         Op::Add { dest, left, right } => {
@@ -286,19 +306,19 @@ fn step(vm: &mut Vm, op: Op, len: u32) -> Result<(), Error> {
             vm.stack.put(base + u32::from(dest), Value::Table(table));
         }
         Op::SetIndex { object, key, src } => {
-            let object = vm.stack.at(base + u32::from(object));
+            let target = vm.stack.at(base + u32::from(object));
             let key = vm.stack.at(base + u32::from(key));
             let value = vm.stack.at(base + u32::from(src));
 
-            store(vm, object, key, value)?;
+            store(vm, object, target, key, value)?;
         }
         Op::DefineGlobal { env, key, src } => {
-            let env = vm.stack.at(base + u32::from(env));
+            let target = vm.stack.at(base + u32::from(env));
             let key = vm.stack.at(base + u32::from(key));
             let value = vm.stack.at(base + u32::from(src));
 
             // Only nil counts as undefined: a global holding false is already defined.
-            if let Value::Table(table) = env
+            if let Value::Table(table) = target
                 && !matches!(vm.heap.table_get(table, key), Value::Nil)
             {
                 let Value::Str(name) = key else {
@@ -309,7 +329,7 @@ fn step(vm: &mut Vm, op: Op, len: u32) -> Result<(), Error> {
                 return Err(vm.throw(format!("global '{name}' already defined")));
             }
 
-            store(vm, env, key, value)?;
+            store(vm, env, target, key, value)?;
         }
         Op::SetList {
             table,
@@ -352,14 +372,20 @@ fn step(vm: &mut Vm, op: Op, len: u32) -> Result<(), Error> {
 }
 
 fn binary(vm: &mut Vm, base: u32, dest: u8, left: u8, right: u8, kind: Kind) -> Result<(), Error> {
-    let left = vm.stack.at(base + u32::from(left));
-    let right = vm.stack.at(base + u32::from(right));
+    let left = Operand {
+        value: vm.stack.at(base + u32::from(left)),
+        reg: left,
+    };
+    let right = Operand {
+        value: vm.stack.at(base + u32::from(right)),
+        reg: right,
+    };
 
     let value = match kind {
         Kind::Arith(kind) => arith::arith(vm, kind, left, right)?,
         Kind::Bits(kind) => arith::bitwise(vm, kind, left, right)?,
-        Kind::Order(kind) => Value::Bool(arith::compare(vm, kind, left, right)?),
-        Kind::Same(wanted) => Value::Bool(arith::equal(vm, left, right) == wanted),
+        Kind::Order(kind) => Value::Bool(arith::compare(vm, kind, left.value, right.value)?),
+        Kind::Same(wanted) => Value::Bool(arith::equal(vm, left.value, right.value) == wanted),
         Kind::Join => arith::concat(vm, left, right)?,
     };
 
@@ -383,15 +409,27 @@ fn jump(vm: &mut Vm, offset: i32) {
         .expect("a jump the emitter kept inside the code");
 }
 
-fn store(vm: &mut Vm, object: Value, key: Value, value: Value) -> Result<(), Error> {
+fn store(vm: &mut Vm, reg: u8, object: Value, key: Value, value: Value) -> Result<(), Error> {
     let Value::Table(table) = object else {
-        return Err(vm.throw(format!("attempt to index a {} value", object.type_name())));
+        return Err(vm.fault("index", object, reg));
     };
 
     vm.heap
         .table_set(table, key, value)
         .map_err(|error| match error {
-            KeyError::Nil => vm.throw("table index is nil".to_owned()),
-            KeyError::Nan => vm.throw("table index is NaN".to_owned()),
+            KeyError::Nil => vm.throw("table index is nil"),
+            KeyError::Nan => vm.throw("table index is NaN"),
         })
+}
+
+/// Leaves the running frame with `produced` results at `from`.
+fn finish(vm: &mut Vm, base: u32, from: u32, produced: u32) {
+    // A returning frame's local go away here, and nothing before this closes them.
+    vm.close(base);
+
+    let Some(Frame::Lua { want, ret_to, .. }) = vm.stack.leave() else {
+        unreachable!("a frame was running");
+    };
+
+    call::settle(vm, from, ret_to, produced, want);
 }

@@ -6,6 +6,13 @@ use crate::token::{Token, TokenKind};
 use super::Lexer;
 use super::bytes::{hex_value, is_name_start};
 
+/// A number as a string spells it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Number {
+    Int(i64),
+    Float(f64),
+}
+
 impl<'a> Lexer<'a> {
     pub(super) fn read_numeral(&mut self, start: usize) -> Result<Token<'a>, Error> {
         let hexadecimal =
@@ -45,6 +52,43 @@ impl<'a> Lexer<'a> {
             }),
         }
     }
+}
+
+/// Reads a whole string as a number, the way a numeral in source reads.
+pub fn parse_number(text: &[u8]) -> Option<Number> {
+    let text = trim(text);
+    let (negative, digits) = match text {
+        [b'-', rest @ ..] => (true, rest),
+        [b'+', rest @ ..] => (false, rest),
+        _ => (false, text),
+    };
+
+    // A numeral starts with a digit or a point, which also turns away `inf` and `nan`.
+    if !digits
+        .first()
+        .is_some_and(|byte| byte.is_ascii_digit() || *byte == b'.')
+    {
+        return None;
+    }
+
+    if negative
+        && digits.iter().all(u8::is_ascii_digit)
+        && str::from_utf8(digits).ok()?.parse::<u64>() == Ok(1 << 63)
+    {
+        return Some(Number::Int(i64::MIN));
+    }
+
+    let number = match numeral_value(digits)? {
+        TokenKind::Int(value) => Number::Int(value),
+        TokenKind::Float(value) => Number::Float(value),
+        other => unreachable!("a numeral that is not a number: {other:?}"),
+    };
+
+    Some(match (negative, number) {
+        (false, number) => number,
+        (true, Number::Int(value)) => Number::Int(value.wrapping_neg()),
+        (true, Number::Float(value)) => Number::Float(-value),
+    })
 }
 
 /// The value a numeral stands for, or `None` when the bytes are not one after all.
@@ -236,6 +280,20 @@ fn scaled(mantissa: u64, scale: i32, sticky: bool) -> f64 {
     }
 
     f64::from_bits(mantissa)
+}
+
+fn trim(text: &[u8]) -> &[u8] {
+    let space = |byte: &u8| matches!(byte, b' ' | b'\t' | b'\n' | b'\x0B' | b'\x0C' | b'\r');
+    let start = text
+        .iter()
+        .position(|byte| !space(byte))
+        .unwrap_or(text.len());
+    let end = text
+        .iter()
+        .rposition(|byte| !space(byte))
+        .map_or(start, |at| at + 1);
+
+    &text[start..end]
 }
 
 /// Drop `count` low bits, reporting the top one dropped - which decides the rounding - and

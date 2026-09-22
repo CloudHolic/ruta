@@ -8,3 +8,4 @@ mod scan;
 mod string;
 
 pub(crate) use cursor::Lexer;
+pub use number::{Number, parse_number};
