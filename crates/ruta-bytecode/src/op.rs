@@ -246,7 +246,7 @@ pub enum Op {
         first: u8,
         count: u8,
     },
-
+    /// `array_hint` and `hash_hint` are how many entries of each part to make room for.
     NewTable {
         dest: u8,
         array_hint: u32,
@@ -400,32 +400,38 @@ pub enum Op {
         args: u8,
         results: u8,
     },
+    /// Replaces the running frame. `args` is [`MULTI`] when they run to the top of the frame.
     TailCall {
         callee: u8,
         args: u8,
     },
+    /// Hands back `first .. first + count`. `count` is [`MULTI`] when the values run to the
+    /// top of the frame. The frame's open upvalues close here.
     Return {
         first: u8,
         count: u8,
     },
+    /// `offset` counts from the instruction after this one, as every jump's does.
     Jump {
         offset: i32,
     },
+    /// Jumps when `cond` holds anything but nil or false.
     JumpIfTrue {
         cond: u8,
         offset: i32,
     },
+    /// Jumps when `cond` holds nil or false.
     JumpIfFalse {
         cond: u8,
         offset: i32,
     },
     /// `control`, `control + 1`, `control + 2` and `control + 3` are the counter, the limit,
-    /// the step and the copy the body sees. Assigning to the copy does not affect the
-    /// iteration.
+    /// the step and the copy the body sees. Jumps past the loop when the body does not run at all.
     ForPrep {
         control: u8,
         offset: i32,
     },
+    /// Steps the loop `ForPrep` set up and jumps back into the body while it has not ended.
     ForLoop {
         control: u8,
         offset: i32,

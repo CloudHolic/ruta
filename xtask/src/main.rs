@@ -9,10 +9,11 @@ use anyhow::{Result, bail};
 
 use crate::reference::Driver;
 
+mod bytecode;
 mod corpus;
 mod reference;
 
-const USAGE: &str = "usage: cargo xtask <build-reference [--luac] | extract-parse-corpus>";
+const USAGE: &str = "usage: cargo xtask <build-reference [--luac] | extract-parse-corpus | bytecode-table [--check]>";
 
 fn main() -> Result<()> {
     let mut args = env::args().skip(1);
@@ -31,6 +32,11 @@ fn main() -> Result<()> {
             reference::build(driver)
         }
         Some("extract-parse-corpus") => corpus::extract(),
+        Some("bytecode-table") => match args.next().as_deref() {
+            None => bytecode::table(false),
+            Some("--check") => bytecode::table(true),
+            Some(other) => bail!("unknown option `{other}`\n{USAGE}"),
+        },
         Some(other) => bail!("unknown command: `{other}`\n{USAGE}"),
         None => bail!("{USAGE}"),
     }

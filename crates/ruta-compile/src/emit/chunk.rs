@@ -15,7 +15,7 @@ use super::pool::Pool;
 #[derive(Debug)]
 pub struct Source<'a> {
     pub lines: &'a LineIndex,
-    /// The chunk name, already in the form a message shows.
+    /// The chunk name: `@` before a file name, `=` before a name shown as it is.
     pub name: &'a [u8],
 }
 

@@ -18,33 +18,32 @@ dependencies at all**. See [ADR 0005](docs/decisions/0005-zero-dependencies.md).
 
 ## Status
 
-**Stage 1 of 14 complete** — lexer, parser, AST. The scoreboards read:
+## Status
+
+**Stage 4 of 14 complete** — `ruta` compiles Lua to bytecode and runs it. The scoreboards
+read:
 
 ```
 ruta conformance - Lua 5.5.1
 
 v1.0 0/28
-v2.0 0/3
+v2.0 3/3
 impossible -/0
 
-total 0/31
+total 3/31
 skipped 3
 
 ruta parse - Lua 5.5.1
 
 files 34/34
-corpus 576/602
+corpus 602/602
 
-total 610/636
+total 636/636
 ```
 
-The conformance board compares program output, so it cannot move before there is a VM in
-stage 4; `0/31` is the correct result until then. Stages 1 through 3 are measured against the
-parse board instead — `ruta -p` against `luac -p`, over every file in the suite and over the
-602 chunks the suite hands to `load`.
-
-`610/636` is full marks for a parser. The 26 cases still missing need name resolution
-(stage 2) or the code generator (stage 4), and neither is something a parser can decide. See
+The three `v2.0` files match because, without the C API's test library, each returns after
+printing three lines — as the reference does. The files that exercise the language itself
+need metatables, error handling and the standard library, which arrive in stages 6 to 9. See
 [docs/roadmap.md](docs/roadmap.md) for what comes next.
 
 | Milestone | Condition                                                                             |
@@ -119,12 +118,14 @@ that each pass can be read and observed on its own —
 | Path                       | Contents                                                                |
 | -------------------------- | ----------------------------------------------------------------------- |
 | `crates/ruta-syntax/`      | lexer, parser, AST, scope resolution                                    |
+| `crates/ruta-compile/`     | IR, register allocation, bytecode emission                              |
+| `crates/ruta-bytecode/`    | the bytecode format — see [docs/bytecode.md](docs/bytecode.md)          |
 | `crates/ruta-runtime/`     | value representation, heap, GC, VM, standard library                    |
 | `crates/ruta-cli/`         | the `ruta` binary                                                       |
 | `crates/ruta-conformance/` | differential test harness                                               |
 | `vendor/`                  | PUC-Lua sources, the official test suite, the manual — never modified   |
 | `conformance/`             | scoring inputs: the test manifest, the `load` prelude, the parse corpus |
-| `docs/`                    | roadmap and decision records                                            |
+| `docs/`                    | roadmap, decision records, bytecode reference                           |
 
 [INVARIANTS.md](INVARIANTS.md) lists the fourteen design constraints that cannot be reversed
 later. They are worth reading before stages 3, 4, and 8 in particular.

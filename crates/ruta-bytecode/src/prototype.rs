@@ -36,7 +36,8 @@ pub struct Prototype {
     pub constants: Box<[Constant]>,
     pub children: Box<[Prototype]>,
     pub upvals: Box<[UpvalDesc]>,
-    /// The chunk name, already formatted. Every prototype carries its own, so that any one of them can be dumped on its own.
+    /// The chunk name as the loader was given it: `@` before a file name, `=` before a name shown as it is.
+    /// Every prototype carries its own, so that any one of them can be dumped on its own.
     pub source: Box<[u8]>,
     /// 0 for a chunk's outermost function.
     pub line_defined: u32,
