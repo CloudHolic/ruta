@@ -115,19 +115,6 @@ fn step(vm: &mut Vm, op: Op, len: u32) -> Result<(), Error> {
                 vm.stack.shift(from, ret_to, args + 1);
                 call::call(vm, ret_to, args, want)?;
             }
-
-            if !matches!(target, Value::Func(_)) {
-                return Err(vm.fault_call(target, from));
-            }
-
-            vm.close(base);
-
-            let Some(Frame::Lua { want, ret_to, .. }) = vm.stack.leave() else {
-                unreachable!("a frame was running");
-            };
-
-            vm.stack.shift(from, ret_to, args + 1);
-            call::call(vm, ret_to, args, want)?;
         }
         Op::Return { first, count } => {
             let from = base + u32::from(first);
@@ -424,7 +411,7 @@ fn store(vm: &mut Vm, reg: u8, object: Value, key: Value, value: Value) -> Resul
 
 /// Leaves the running frame with `produced` results at `from`.
 fn finish(vm: &mut Vm, base: u32, from: u32, produced: u32) {
-    // A returning frame's local go away here, and nothing before this closes them.
+    // A returning frame's locals go away here, and nothing before this closes them.
     vm.close(base);
 
     let Some(Frame::Lua { want, ret_to, .. }) = vm.stack.leave() else {
