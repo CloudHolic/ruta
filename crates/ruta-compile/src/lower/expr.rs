@@ -57,8 +57,10 @@ impl Lowerer<'_> {
                 right,
             } => self.short_circuit(*left, *right, dest, false, at),
             ExprKind::Binary { op, left, right } => {
-                let left = self.operand(*left);
-                let right = self.operand(*right);
+                let (left, right) = match op {
+                    SyntaxBinOp::Concat => (self.operand(*left), self.operand(*right)),
+                    _ => (self.in_place(*left), self.in_place(*right)),
+                };
 
                 self.emit(
                     Op::Binary {
@@ -391,6 +393,24 @@ impl Lowerer<'_> {
         self.expr(right, dest);
         self.emit(Op::Jump { to: join }, at);
         self.switch_to(join);
+    }
+
+    /// A local read where it lives, looking through parentheses; anything else as `operand`.
+    fn in_place(&mut self, id: ExprId) -> Reg {
+        let ast = self.ast;
+        let mut inner = id;
+
+        while let ExprKind::Paren(next) = &ast.expr(inner).kind {
+            inner = *next;
+        }
+
+        if let ExprKind::Name(_) = &ast.expr(inner).kind
+            && let Some(Binding::Variable(Access::Local(var))) = self.bindings.at(inner)
+        {
+            return self.lookup(var);
+        }
+
+        self.operand(id)
     }
 }
 

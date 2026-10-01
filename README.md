@@ -27,24 +27,18 @@ read:
 ruta conformance - Lua 5.5.1
 
 v1.0 0/28
-v2.0 3/3
+v2.0 -/3   not measured: the reference has no test library
 impossible -/0
 
-total 3/31
+total 0/28
 skipped 3
-
-ruta parse - Lua 5.5.1
-
-files 34/34
-corpus 602/602
-
-total 636/636
 ```
 
-The three `v2.0` files match because, without the C API's test library, each returns after
-printing three lines — as the reference does. The files that exercise the language itself
-need metatables, error handling and the standard library, which arrive in stages 6 to 9. See
-[docs/roadmap.md](docs/roadmap.md) for what comes next.
+The `v2.0` files need a reference built with the C API's test library; without it they return
+early on both sides, so the board leaves them out rather than count a match that measures
+nothing. The files that exercise the language itself need metatables, error handling and the
+standard library, which arrive in stages 6 to 9. See [docs/roadmap.md](docs/roadmap.md) for
+what comes next.
 
 | Milestone | Condition                                                                             |
 | --------- | ------------------------------------------------------------------------------------- |

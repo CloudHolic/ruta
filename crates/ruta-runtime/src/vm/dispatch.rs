@@ -1,6 +1,6 @@
 //! The loop. Frame state lives on the frame stack, never in a local that outlives a step.
 
-use ruta_bytecode::{MULTI, Op, UpvalSource, decode};
+use ruta_bytecode::{MULTI, Op, UpvalSource, Vararg, decode};
 
 use crate::heap::{Function, KeyError, Upvalue};
 use crate::stack::{Frame, Want};
@@ -126,16 +126,47 @@ fn step(vm: &mut Vm, op: Op, len: u32) -> Result<(), Error> {
             finish(vm, base, from, produced);
         }
         Op::Vararg { first, count } => {
-            let Frame::Lua { varargs, .. } = *vm.stack.current();
             let to = base + u32::from(first);
+            let proto = vm.heap.proto(vm.running());
+            let named = (proto.vararg == Vararg::Table).then(|| base + u32::from(proto.params));
+
+            let available = match named {
+                Some(reg) => table_count(vm, reg)?,
+                None => {
+                    let Frame::Lua { varargs, .. } = *vm.stack.current();
+                    varargs
+                }
+            };
             let wanted = match count {
-                MULTI => varargs,
+                MULTI => available,
                 count => u32::from(count),
             };
-            let copied = wanted.min(varargs);
 
+            if to + wanted > call::HEIGHT {
+                return Err(vm.throw("stack overflow"));
+            }
+
+            let copied = wanted.min(available);
             vm.stack.reserve(to + wanted);
-            vm.stack.shift(base - varargs, to, copied);
+
+            match named {
+                Some(reg) => {
+                    let Value::Table(table) = vm.stack.at(reg) else {
+                        unreachable!("a named vararg is a table nothing can reassign");
+                    };
+
+                    for index in 0..copied {
+                        let value = vm.heap.table_get(table, Value::Int(i64::from(index) + 1));
+                        vm.stack.put(to + index, value);
+                    }
+                }
+                None => {
+                    let Frame::Lua { varargs, .. } = *vm.stack.current();
+
+                    vm.stack.shift(base - varargs, to, copied)
+                }
+            }
+
             vm.stack.fill(to + copied, to + wanted, Value::Nil);
 
             if count == MULTI {
@@ -419,4 +450,19 @@ fn finish(vm: &mut Vm, base: u32, from: u32, produced: u32) {
     };
 
     call::settle(vm, from, ret_to, produced, want);
+}
+
+/// The `n` of a named vararg table: an integer, not a float that happens to be whole,
+/// from 0 up to the bound the reference keeps.
+/// The suite asserts the bound exists, not where it is.
+fn table_count(vm: &mut Vm, reg: u32) -> Result<u32, Error> {
+    let Value::Table(table) = vm.stack.at(reg) else {
+        unreachable!("a named vararg is a table nothing can reassign");
+    };
+    let n = vm.intern(b"n");
+
+    match vm.heap.table_get(table, Value::Str(n)) {
+        Value::Int(count) if (0..1 << 30).contains(&count) => Ok(count as u32),
+        _ => Err(vm.throw("vararg table has no proper 'n'")),
+    }
 }

@@ -1,7 +1,7 @@
 //! Differential test scoreboard.
 
 use std::path::PathBuf;
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 
 use anyhow::{Context, Result, bail};
 use ruta_conformance::manifest::{Manifest, Tier};
@@ -42,6 +42,11 @@ fn report() -> Result<()> {
     let suite = root.join("vendor").join("lua-tests");
     let manifest = Manifest::load(&root.join("conformance").join("manifest.toml"), &suite)
         .context("loading the manifest")?;
+    let has_test_library = Command::new(&reference)
+        .args(["-e", "os.exit(T and 0 or 1)"])
+        .status()
+        .context("asking the reference whether it has the test library")?
+        .success();
     let harness = Harness::new(
         reference,
         PathBuf::from(env!("CARGO_BIN_EXE_ruta")),
@@ -58,6 +63,11 @@ fn report() -> Result<()> {
             .expect("every tier appears in TIER_ORDER");
         total[index] += 1;
 
+        if case.tier == Tier::V2 && !has_test_library {
+            println!("  {:<6}{}", "n/a", case.name);
+            continue;
+        }
+
         let status = match harness.run_case(case, &suite)? {
             Comparison::Match => {
                 matched[index] += 1;
@@ -69,11 +79,16 @@ fn report() -> Result<()> {
         println!("  {status:<6}{}", case.name);
     }
 
-    print_scoreboard(&matched, &total, manifest.skipped().count());
+    print_scoreboard(
+        &matched,
+        &total,
+        manifest.skipped().count(),
+        has_test_library,
+    );
     Ok(())
 }
 
-fn print_scoreboard(matched: &[usize], total: &[usize], skipped: usize) {
+fn print_scoreboard(matched: &[usize], total: &[usize], skipped: usize, has_test_library: bool) {
     println!("\nruta conformance - Lua 5.5.1\n");
 
     let mut counted = 0;
@@ -82,6 +97,15 @@ fn print_scoreboard(matched: &[usize], total: &[usize], skipped: usize) {
         if *tier == Tier::Impossible {
             // These cannot pass, so a fraction would be misleading.
             println!("  {:<12}-/{}", label(*tier), total[index]);
+            continue;
+        }
+
+        if *tier == Tier::V2 && !has_test_library {
+            println!(
+                "  {:<12}-/{}   not measured: the reference has no test library",
+                label(*tier),
+                total[index]
+            );
             continue;
         }
 

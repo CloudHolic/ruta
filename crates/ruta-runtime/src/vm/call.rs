@@ -9,6 +9,9 @@ use crate::value::Value;
 use super::error::Error;
 use super::state::Vm;
 
+/// How high the value stack may grow when a vararg table asks for more values than it holds.
+pub(super) const HEIGHT: u32 = 1_000_000;
+
 /// Deep enough that no honest program reaches it, shallow enough to s top before the host runs out of memory.
 const DEPTH: usize = 200_000;
 
@@ -83,7 +86,8 @@ pub(super) fn enter(vm: &mut Vm, callee: u32, args: u32, want: Want) -> Result<(
     }
 
     if kind == Vararg::Table {
-        let table = vm.heap.new_table(varargs as usize, 0);
+        let table = vm.heap.new_table(varargs as usize, 1);
+        let n = vm.intern(b"n");
 
         for index in 0..varargs {
             let value = vm.stack.at(base - varargs + index);
@@ -91,6 +95,10 @@ pub(super) fn enter(vm: &mut Vm, callee: u32, args: u32, want: Want) -> Result<(
                 .table_set(table, Value::Int(i64::from(index) + 1), value)
                 .expect("a positive integer key")
         }
+
+        vm.heap
+            .table_set(table, Value::Str(n), Value::Int(i64::from(varargs)))
+            .expect("a string key");
 
         vm.stack.put(base + params, Value::Table(table));
     }
